@@ -175,6 +175,7 @@ export class Game {
 
   openShop() {
     this.state = State.SHOP;
+    this.input.endFrame();
   }
 
   startNextWave() {
@@ -352,8 +353,9 @@ export class Game {
     if (this.caravans.length > 0) {
       const allDone = this.caravans.every(c => !c.alive);
       if (allDone && this.loots.length === 0) {
-        // Flawless wave bonus
-        if (this.waveDamageTaken === 0) {
+        // Flawless wave bonus (must have robbed at least one caravan)
+        const anyRobbed = this.caravans.some(c => !c.escaped);
+        if (this.waveDamageTaken === 0 && anyRobbed) {
           const bonus = CONST.FLAWLESS_WAVE_BONUS * this.wave;
           this.score += bonus;
           if (this.player) {

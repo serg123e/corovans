@@ -543,6 +543,7 @@ export class Caravan {
 
     // State
     this.looted = false; // has been destroyed and loot dropped
+    this.escaped = false; // reached end of road without being robbed
     this.isBoss = false; // set to true for boss caravans
 
     // Visual juice
@@ -561,13 +562,14 @@ export class Caravan {
       const gy = this.pos.y + Math.sin(angle) * offset;
 
       // Choose guard type based on wave
+      // Armored from wave 4+, archers from wave 6+
       let guardType = GuardType.BASIC;
       if (wave >= 4) {
         const roll = Math.random();
-        if (wave >= 6 && roll < 0.25) {
-          guardType = GuardType.ARCHER;
-        } else if (roll < 0.35) {
+        if (roll < 0.35) {
           guardType = GuardType.ARMORED;
+        } else if (wave >= 6 && roll < 0.60) {
+          guardType = GuardType.ARCHER;
         }
       }
 
@@ -593,6 +595,7 @@ export class Caravan {
     if (this.pathT > 1 || this.pathT < 0) {
       this.alive = false;
       this.looted = true; // mark as done (escaped, no loot)
+      this.escaped = true;
       return;
     }
 
