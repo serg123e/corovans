@@ -5,6 +5,8 @@ import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { spawnWave } from './caravan.js';
+import { performAttack } from './combat.js';
+import { spawnLoot } from './loot.js';
 
 // Game states
 export const State = {
@@ -220,6 +222,29 @@ export class Game {
         this.gameOver();
         return;
       }
+
+      // Handle player attack
+      if (this.input.wantsAttack() && this.player.tryAttack()) {
+        const hits = performAttack(this.player, this.guards, this.caravans);
+        for (const hit of hits) {
+          // Floating damage number
+          this.addFloatingText(
+            hit.target.pos.x, hit.target.pos.y - 20,
+            `-${hit.damage}`, '#fff', 16
+          );
+
+          // Check if guard died
+          if (hit.type === 'guard' && !hit.target.alive) {
+            // No loot from individual guards, but check if caravan should drop loot
+            this._checkCaravanLoot(hit.target.caravan);
+          }
+
+          // Check if caravan was destroyed directly
+          if (hit.type === 'caravan' && !hit.target.alive) {
+            this._checkCaravanLoot(hit.target);
+          }
+        }
+      }
     }
 
     // Update caravans
@@ -244,10 +269,29 @@ export class Game {
       }
     }
 
-    // Check wave completion: all caravans done (dead or escaped)
+    // Update loot
+    if (this.player) {
+      for (let i = this.loots.length - 1; i >= 0; i--) {
+        const loot = this.loots[i];
+        const collected = loot.update(dt, this.player.pos);
+        if (collected > 0) {
+          this.player.addGold(collected);
+          this.score += collected;
+          this.addFloatingText(
+            loot.pos.x, loot.pos.y - 10,
+            `+${collected}`, CONST.COLOR_GOLD, 14
+          );
+        }
+        if (!loot.alive) {
+          this.loots.splice(i, 1);
+        }
+      }
+    }
+
+    // Check wave completion: all caravans done (dead or escaped) and all loot collected
     if (this.caravans.length > 0) {
       const allDone = this.caravans.every(c => !c.alive);
-      if (allDone) {
+      if (allDone && this.loots.length === 0) {
         this.openShop();
       }
     }
@@ -272,6 +316,25 @@ export class Game {
     }
   }
 
+  // Check if a caravan should drop loot (all its guards dead or caravan itself destroyed)
+  _checkCaravanLoot(caravan) {
+    if (!caravan || caravan.looted) return;
+
+    // Caravan drops loot if it's dead OR all its guards are dead
+    const allGuardsDead = caravan.guards.every(g => !g.alive);
+    const shouldDrop = !caravan.alive || allGuardsDead;
+
+    if (shouldDrop) {
+      caravan.looted = true;
+      if (caravan.alive) {
+        caravan.alive = false; // kill the caravan if guards are all dead
+      }
+      const coins = spawnLoot(caravan);
+      this.loots.push(...coins);
+      this.caravansRobbed++;
+    }
+  }
+
   _renderPlaying(r) {
     r.save();
     this.camera.apply(r);
@@ -286,6 +349,11 @@ export class Game {
     // Caravans
     for (const caravan of this.caravans) {
       caravan.render(r);
+    }
+
+    // Loot (render under entities)
+    for (const loot of this.loots) {
+      loot.render(r);
     }
 
     // Guards

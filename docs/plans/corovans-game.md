@@ -92,15 +92,15 @@ Create caravan entities with guards that travel along roads, and a wave-based sp
 
 Implement melee combat, health, damage, loot drops, and collection.
 
-- [ ] Add attack action (Space key or click) with cooldown and attack range
-- [ ] Implement hit detection between player attack and enemies
-- [ ] Add health system with damage calculation (player.damage vs guard.armor)
-- [ ] Show floating damage numbers on hit
-- [ ] Implement guard death and loot dropping from defeated caravans
-- [ ] Create loot.js with gold coin entities that can be picked up by walking over them
-- [ ] Add player death and game over trigger when HP reaches 0
-- [ ] Implement attack animation for player
-- [ ] Write tests for combat calculations in tests/test-combat.js
+- [x] Add attack action (Space key or click) with cooldown and attack range
+- [x] Implement hit detection between player attack and enemies
+- [x] Add health system with damage calculation (player.damage vs guard.armor)
+- [x] Show floating damage numbers on hit
+- [x] Implement guard death and loot dropping from defeated caravans
+- [x] Create loot.js with gold coin entities that can be picked up by walking over them
+- [x] Add player death and game over trigger when HP reaches 0
+- [x] Implement attack animation for player
+- [x] Write tests for combat calculations in tests/test-combat.js
 
 ### Task 5: UI - HUD, Menus, and Shop
 

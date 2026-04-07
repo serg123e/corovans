@@ -6,6 +6,7 @@ import { Vec2, CONST, clamp } from './utils.js';
 const Anim = {
   IDLE: 'idle',
   WALK: 'walk',
+  ATTACK: 'attack',
 };
 
 // Pixel art sprite definitions for the bandit
@@ -64,6 +65,19 @@ const SPRITE_WALK_2 = [
   ' S..SS ',
 ];
 
+const SPRITE_ATTACK = [
+  ' .HHH. ',
+  ' hhhhh ',
+  ' .FEF. ',
+  ' .BBB. ',
+  'ACCCCCAA',
+  ' cCCCc  ',
+  ' .CCC.  ',
+  ' .PPP.  ',
+  ' pP.Pp  ',
+  ' SS.SS  ',
+];
+
 export class Player {
   constructor(x, y) {
     this.pos = new Vec2(x, y);
@@ -92,9 +106,12 @@ export class Player {
     this.animFrame = 0;
     this.walkFrames = [SPRITE_WALK_1, SPRITE_WALK_2];
 
-    // Combat state (used by later tasks)
+    // Combat state
     this.attackTimer = 0;
     this.alive = true;
+    this.isAttacking = false;
+    this.attackAnimTimer = 0;
+    this.attackAnimDuration = 0.2; // seconds the attack anim plays
   }
 
   update(dt, input, worldW, worldH) {
@@ -140,7 +157,27 @@ export class Player {
     this._updateAnimation(dt);
   }
 
+  // Try to start an attack. Returns true if attack was initiated.
+  tryAttack() {
+    if (!this.alive || this.attackTimer > 0) return false;
+    this.attackTimer = this.attackCooldown;
+    this.isAttacking = true;
+    this.attackAnimTimer = this.attackAnimDuration;
+    this.anim = 'attack';
+    return true;
+  }
+
   _updateAnimation(dt) {
+    // Attack animation takes priority
+    if (this.attackAnimTimer > 0) {
+      this.attackAnimTimer -= dt;
+      this.anim = Anim.ATTACK;
+      if (this.attackAnimTimer <= 0) {
+        this.isAttacking = false;
+      }
+      return;
+    }
+
     const moving = this.vel.lenSq() > 100; // threshold to switch to walk
 
     if (moving) {
@@ -164,7 +201,9 @@ export class Player {
 
     // Choose sprite based on animation state
     let sprite;
-    if (this.anim === Anim.WALK) {
+    if (this.anim === Anim.ATTACK) {
+      sprite = SPRITE_ATTACK;
+    } else if (this.anim === Anim.WALK) {
       sprite = this.walkFrames[this.animFrame];
     } else {
       sprite = SPRITE_IDLE;
