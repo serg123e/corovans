@@ -143,19 +143,22 @@ export class UI {
   renderHUD(r, game) {
     const player = game.player;
     r.rect(0, 0, r.width, CONST.HUD_HEIGHT, 'rgba(0,0,0,0.5)');
-    r.text(`Волна: ${game.wave}`, 10, 10, '#fff', 16);
-    r.text(`Счёт: ${game.score}`, 150, 10, CONST.COLOR_GOLD, 16);
+    const isBossWave = game.wave > 0 && game.wave % 5 === 0;
+    const waveColor = isBossWave ? '#ff4444' : '#fff';
+    const waveText = isBossWave ? `Волна: ${game.wave} [БОСС]` : `Волна: ${game.wave}`;
+    r.text(waveText, 10, 10, waveColor, 16);
+    r.text(`Счёт: ${game.score}`, 180, 10, CONST.COLOR_GOLD, 16);
     if (player) {
       // HP bar in HUD
-      r.healthBar(280, 12, 100, 14, player.hp / player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
-      r.text(`${player.hp}/${player.maxHp}`, 390, 10, '#fff', 14);
+      r.healthBar(310, 12, 100, 14, player.hp / player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
+      r.text(`${player.hp}/${player.maxHp}`, 420, 10, '#fff', 14);
       // Gold
-      r.text(`\u2B50 ${player.gold}`, 470, 10, CONST.COLOR_GOLD, 16);
+      r.text(`\u2B50 ${player.gold}`, 500, 10, CONST.COLOR_GOLD, 16);
     }
     // Enemy/caravan count
     const aliveCaravans = game.caravans.filter(c => c.alive).length;
     const aliveGuards = game.guards.filter(g => g.alive).length;
-    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 570, 10, '#ddd', 14);
+    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 600, 10, '#ddd', 14);
   }
 
   renderShop(r, player) {

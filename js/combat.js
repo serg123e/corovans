@@ -1,6 +1,49 @@
-// Combat - attack handling, hit detection, and damage calculations
+// Combat - attack handling, hit detection, damage calculations, and projectiles
 
 import { Vec2, CONST, circlesOverlap } from './utils.js';
+
+// Projectile entity (arrows from archer guards)
+export class Projectile {
+  constructor(x, y, dirX, dirY, damage) {
+    this.pos = new Vec2(x, y);
+    this.dir = new Vec2(dirX, dirY).normalize();
+    this.vel = this.dir.mul(CONST.PROJECTILE_SPEED);
+    this.damage = damage;
+    this.radius = CONST.PROJECTILE_RADIUS;
+    this.alive = true;
+    this.lifetime = CONST.PROJECTILE_LIFETIME;
+  }
+
+  update(dt, playerPos, playerRadius) {
+    if (!this.alive) return false;
+
+    this.pos = this.pos.add(this.vel.mul(dt));
+    this.lifetime -= dt;
+
+    if (this.lifetime <= 0) {
+      this.alive = false;
+      return false;
+    }
+
+    // Check hit against player
+    if (circlesOverlap(this.pos.x, this.pos.y, this.radius,
+                        playerPos.x, playerPos.y, playerRadius)) {
+      this.alive = false;
+      return true; // hit player
+    }
+
+    return false;
+  }
+
+  render(renderer) {
+    if (!this.alive) return;
+    // Arrow: small brown line in direction of travel
+    const tail = this.pos.sub(this.dir.mul(8));
+    renderer.line(tail.x, tail.y, this.pos.x, this.pos.y, '#6a4a2a', 2);
+    // Arrowhead
+    renderer.circle(this.pos.x, this.pos.y, 2, '#4a3a1a');
+  }
+}
 
 // Calculate damage dealt by attacker to target
 // Returns effective damage after armor reduction

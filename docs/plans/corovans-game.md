@@ -119,13 +119,13 @@ Create all user interface elements: in-game HUD, main menu, game over screen, an
 
 Implement difficulty scaling, enemy variety, and boss waves.
 
-- [ ] Scale wave difficulty: more caravans, more guards per caravan per wave
-- [ ] Add guard types: basic (sword), armored (high HP), archer (ranged attack)
-- [ ] Implement archer guard ranged attack (projectile entity)
-- [ ] Add boss caravan every 5 waves (extra large, many guards, huge loot)
-- [ ] Implement scoring system (gold earned + bonus for flawless waves)
-- [ ] Balance difficulty curve (playtest-friendly constants in utils.js)
-- [ ] Write tests for collision detection in tests/test-collision.js
+- [x] Scale wave difficulty: more caravans, more guards per caravan per wave
+- [x] Add guard types: basic (sword), armored (high HP), archer (ranged attack)
+- [x] Implement archer guard ranged attack (projectile entity)
+- [x] Add boss caravan every 5 waves (extra large, many guards, huge loot)
+- [x] Implement scoring system (gold earned + bonus for flawless waves)
+- [x] Balance difficulty curve (playtest-friendly constants in utils.js)
+- [x] Write tests for collision detection in tests/test-collision.js
 
 ### Task 7: Polish - Particles, Sound, and Visual Juice
 

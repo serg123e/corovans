@@ -39,6 +39,13 @@ const CARAVAN_DEFS = {
   },
 };
 
+// Guard types
+export const GuardType = {
+  BASIC: 'basic',
+  ARMORED: 'armored',
+  ARCHER: 'archer',
+};
+
 // Guard AI states
 const GuardState = {
   PATROL: 'patrol',
@@ -92,6 +99,106 @@ const GUARD_WALK_2 = [
   ' AAAAAW',
   ' aAAAa ',
   ' .AAA. ',
+  ' .PPP. ',
+  ' P..Pp ',
+  ' S..SS ',
+];
+
+// Armored guard sprites
+const ARMORED_PALETTE = {
+  'H': '#5a5a6a', // heavy helmet
+  'h': '#4a4a5a', // helmet dark
+  'F': '#d4a574', // face
+  'E': '#1a1a1a', // eyes
+  'A': '#6a6a7a', // heavy armor
+  'a': '#5a5a6a', // armor dark
+  'P': '#4a4a5a', // pants
+  'p': '#3a3a4a', // pants dark
+  'S': '#5a4a3a', // shoes
+  'W': '#8a8a9a', // shield
+};
+
+const ARMORED_SPRITE = [
+  ' .HHH. ',
+  ' hhHhh ',
+  ' .FEF. ',
+  'WAAAAAW',
+  'WaAAAaW',
+  ' .AAA. ',
+  ' .PPP. ',
+  ' pP.Pp ',
+  ' SS.SS ',
+];
+
+const ARMORED_WALK_1 = [
+  ' .HHH. ',
+  ' hhHhh ',
+  ' .FEF. ',
+  'WAAAAAW',
+  'WaAAAaW',
+  ' .AAA. ',
+  ' .PPP. ',
+  ' pP..P ',
+  ' SS..S ',
+];
+
+const ARMORED_WALK_2 = [
+  ' .HHH. ',
+  ' hhHhh ',
+  ' .FEF. ',
+  'WAAAAAW',
+  'WaAAAaW',
+  ' .AAA. ',
+  ' .PPP. ',
+  ' P..Pp ',
+  ' S..SS ',
+];
+
+// Archer guard sprites
+const ARCHER_PALETTE = {
+  'H': '#2e4a1e', // hood
+  'h': '#1e3a0e', // hood dark
+  'F': '#d4a574', // face
+  'E': '#1a1a1a', // eyes
+  'A': '#4a6a3a', // tunic
+  'a': '#3a5a2a', // tunic dark
+  'P': '#5a4a3a', // pants
+  'p': '#4a3a2a', // pants dark
+  'S': '#5a4a3a', // shoes
+  'B': '#6a4a2a', // bow
+};
+
+const ARCHER_SPRITE = [
+  ' .HHH. ',
+  ' hhhhh ',
+  ' .FEF. ',
+  ' AAAAA ',
+  ' aAAAaB',
+  ' .AAA.B',
+  ' .PPP. ',
+  ' pP.Pp ',
+  ' SS.SS ',
+];
+
+const ARCHER_WALK_1 = [
+  ' .HHH. ',
+  ' hhhhh ',
+  ' .FEF. ',
+  ' AAAAA ',
+  ' aAAAaB',
+  ' .AAA.B',
+  ' .PPP. ',
+  ' pP..P ',
+  ' SS..S ',
+];
+
+const ARCHER_WALK_2 = [
+  ' .HHH. ',
+  ' hhhhh ',
+  ' .FEF. ',
+  ' AAAAA ',
+  ' aAAAaB',
+  ' .AAA.B',
   ' .PPP. ',
   ' P..Pp ',
   ' S..SS ',
@@ -164,21 +271,43 @@ const ROYAL_SPRITE = [
 
 
 export class Guard {
-  constructor(x, y, caravan) {
+  constructor(x, y, caravan, type = GuardType.BASIC) {
     this.pos = new Vec2(x, y);
     this.vel = new Vec2(0, 0);
     this.radius = CONST.GUARD_RADIUS;
     this.caravan = caravan;
+    this.type = type;
 
-    // Stats
-    this.maxHp = 40;
+    // Stats based on guard type
+    switch (type) {
+      case GuardType.ARMORED:
+        this.maxHp = CONST.ARMORED_GUARD_HP;
+        this.damage = CONST.ARMORED_GUARD_DAMAGE;
+        this.speed = CONST.ARMORED_GUARD_SPEED;
+        this.detectionRange = CONST.ARMORED_GUARD_DETECTION_RANGE;
+        this.attackRange = CONST.GUARD_ATTACK_RANGE;
+        this.attackCooldown = CONST.GUARD_ATTACK_COOLDOWN;
+        break;
+      case GuardType.ARCHER:
+        this.maxHp = CONST.ARCHER_GUARD_HP;
+        this.damage = CONST.ARCHER_GUARD_DAMAGE;
+        this.speed = CONST.ARCHER_GUARD_SPEED;
+        this.detectionRange = CONST.ARCHER_GUARD_DETECTION_RANGE;
+        this.attackRange = CONST.ARCHER_GUARD_ATTACK_RANGE;
+        this.attackCooldown = CONST.ARCHER_GUARD_ATTACK_COOLDOWN;
+        break;
+      default: // BASIC
+        this.maxHp = CONST.GUARD_BASE_HP;
+        this.damage = CONST.GUARD_BASE_DAMAGE;
+        this.speed = CONST.GUARD_SPEED;
+        this.detectionRange = CONST.GUARD_DETECTION_RANGE;
+        this.attackRange = CONST.GUARD_ATTACK_RANGE;
+        this.attackCooldown = CONST.GUARD_ATTACK_COOLDOWN;
+        break;
+    }
+
     this.hp = this.maxHp;
-    this.damage = 8;
-    this.speed = CONST.GUARD_SPEED;
-    this.detectionRange = CONST.GUARD_DETECTION_RANGE;
     this.chaseRange = CONST.GUARD_CHASE_RANGE;
-    this.attackRange = CONST.GUARD_ATTACK_RANGE;
-    this.attackCooldown = CONST.GUARD_ATTACK_COOLDOWN;
     this.attackTimer = 0;
 
     // AI
@@ -189,11 +318,28 @@ export class Guard {
     );
     this.alive = true;
 
-    // Animation
+    // Animation - set sprites based on type
     this.animTimer = 0;
     this.animFrame = 0;
     this.facing = new Vec2(1, 0);
-    this.walkFrames = [GUARD_WALK_1, GUARD_WALK_2];
+
+    switch (type) {
+      case GuardType.ARMORED:
+        this.walkFrames = [ARMORED_WALK_1, ARMORED_WALK_2];
+        this.idleSprite = ARMORED_SPRITE;
+        this.palette = ARMORED_PALETTE;
+        break;
+      case GuardType.ARCHER:
+        this.walkFrames = [ARCHER_WALK_1, ARCHER_WALK_2];
+        this.idleSprite = ARCHER_SPRITE;
+        this.palette = ARCHER_PALETTE;
+        break;
+      default:
+        this.walkFrames = [GUARD_WALK_1, GUARD_WALK_2];
+        this.idleSprite = GUARD_SPRITE;
+        this.palette = GUARD_PALETTE;
+        break;
+    }
   }
 
   update(dt, playerPos) {
@@ -236,7 +382,23 @@ export class Guard {
         targetPos = caravanPos.add(this.patrolOffset);
         break;
       case GuardState.CHASE:
-        targetPos = playerPos;
+        if (this.type === GuardType.ARCHER) {
+          // Archers try to maintain preferred distance
+          const toPlayer = playerPos.sub(this.pos);
+          const dist = toPlayer.len();
+          if (dist < CONST.ARCHER_PREFERRED_DIST * 0.7) {
+            // Too close - back away
+            targetPos = this.pos.sub(toPlayer.normalize().mul(CONST.ARCHER_PREFERRED_DIST));
+          } else if (dist > CONST.ARCHER_PREFERRED_DIST * 1.3) {
+            // Too far - approach
+            targetPos = playerPos;
+          } else {
+            // Good range - strafe slightly
+            targetPos = this.pos;
+          }
+        } else {
+          targetPos = playerPos;
+        }
         break;
       case GuardState.RETURN:
         targetPos = caravanPos;
@@ -254,6 +416,11 @@ export class Guard {
       this.vel = new Vec2(0, 0);
     }
 
+    // Archers always face the player when chasing
+    if (this.type === GuardType.ARCHER && this.state === GuardState.CHASE) {
+      this.facing = playerPos.sub(this.pos).normalize();
+    }
+
     this.pos = this.pos.add(this.vel.mul(dt));
 
     // Animation
@@ -267,12 +434,21 @@ export class Guard {
 
   canAttack(playerPos) {
     if (!this.alive || this.attackTimer > 0) return false;
-    return this.pos.dist(playerPos) < this.attackRange + CONST.PLAYER_RADIUS;
+    const dist = this.pos.dist(playerPos);
+    if (this.type === GuardType.ARCHER) {
+      return dist < this.attackRange && this.state === GuardState.CHASE;
+    }
+    return dist < this.attackRange + CONST.PLAYER_RADIUS;
   }
 
-  attack() {
+  attack(playerPos) {
     this.attackTimer = this.attackCooldown;
-    return this.damage;
+    if (this.type === GuardType.ARCHER) {
+      // Return projectile info instead of direct damage
+      const dir = playerPos.sub(this.pos).normalize();
+      return { ranged: true, damage: this.damage, origin: this.pos.copy(), dir };
+    }
+    return { ranged: false, damage: this.damage };
   }
 
   takeDamage(amount) {
@@ -292,22 +468,24 @@ export class Guard {
     if (this.animFrame >= 0) {
       sprite = this.walkFrames[this.animFrame];
     } else {
-      sprite = GUARD_SPRITE;
+      sprite = this.idleSprite;
     }
 
     const drawSprite = flipH ? sprite.map(row => row.split('').reverse().join('')) : sprite;
-    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, GUARD_PALETTE, 2);
+    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, this.palette, 2);
 
     // Health bar when damaged
     if (this.hp < this.maxHp) {
       const barW = 20;
       const barH = 3;
+      const barColor = this.type === GuardType.ARMORED ? '#3498db' :
+                        this.type === GuardType.ARCHER ? '#2ecc71' : '#e67e22';
       renderer.healthBar(
         this.pos.x - barW / 2,
         this.pos.y - 14,
         barW, barH,
         this.hp / this.maxHp,
-        '#e67e22',
+        barColor,
         CONST.COLOR_HP_BG
       );
     }
@@ -345,16 +523,32 @@ export class Caravan {
 
     // State
     this.looted = false; // has been destroyed and loot dropped
+    this.isBoss = false; // set to true for boss caravans
   }
 
-  spawnGuards() {
-    const count = this.def.guardCount;
+  spawnGuards(wave = 1) {
+    // Extra guards from wave scaling: +1 guard per 3 waves
+    const extraGuards = Math.floor(wave / 3);
+    const count = this.def.guardCount + extraGuards;
+
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count;
       const offset = 30;
       const gx = this.pos.x + Math.cos(angle) * offset;
       const gy = this.pos.y + Math.sin(angle) * offset;
-      const guard = new Guard(gx, gy, this);
+
+      // Choose guard type based on wave
+      let guardType = GuardType.BASIC;
+      if (wave >= 4) {
+        const roll = Math.random();
+        if (wave >= 6 && roll < 0.25) {
+          guardType = GuardType.ARCHER;
+        } else if (roll < 0.35) {
+          guardType = GuardType.ARMORED;
+        }
+      }
+
+      const guard = new Guard(gx, gy, this, guardType);
       this.guards.push(guard);
     }
     return this.guards;
@@ -414,18 +608,25 @@ export class Caravan {
     // Flip based on direction
     const flipH = this.direction < 0;
     const drawSprite = flipH ? sprite.map(row => row.split('').reverse().join('')) : sprite;
-    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, palette, 2);
+    const spriteScale = this.isBoss ? 3 : 2;
+    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, palette, spriteScale);
+
+    // Boss indicator
+    if (this.isBoss) {
+      renderer.circle(this.pos.x, this.pos.y - this.radius - 12, 5, '#ffd700');
+      renderer.circle(this.pos.x, this.pos.y - this.radius - 12, 3, '#ffee44');
+    }
 
     // Health bar when damaged
     if (this.hp < this.maxHp) {
-      const barW = 30;
-      const barH = 4;
+      const barW = this.isBoss ? 50 : 30;
+      const barH = this.isBoss ? 5 : 4;
       renderer.healthBar(
         this.pos.x - barW / 2,
         this.pos.y - this.radius - 6,
         barW, barH,
         this.hp / this.maxHp,
-        '#e74c3c',
+        this.isBoss ? '#ff4444' : '#e74c3c',
         CONST.COLOR_HP_BG
       );
     }
@@ -436,10 +637,33 @@ export class Caravan {
 // Wave spawning system
 export function spawnWave(wave, world) {
   const caravans = [];
+  const isBossWave = wave > 0 && wave % 5 === 0;
 
-  // Base: 1 caravan at wave 1, scaling up
-  const caravanCount = Math.min(1 + Math.floor(wave / 2), 6);
+  // Scaling: more caravans as waves progress
+  // Wave 1: 1, Wave 2: 1, Wave 3: 2, Wave 4: 2, Wave 5 (boss): 1 boss + 1 normal, etc.
+  let caravanCount = Math.min(1 + Math.floor(wave / 2), 6);
 
+  if (isBossWave) {
+    // Boss wave: spawn one boss caravan + fewer regular caravans
+    const bossCaravan = new Caravan(CaravanType.ROYAL, world);
+    bossCaravan.isBoss = true;
+    bossCaravan.maxHp = Math.round(bossCaravan.maxHp * CONST.BOSS_HP_MULTIPLIER);
+    bossCaravan.hp = bossCaravan.maxHp;
+    bossCaravan.lootValue = Math.round(bossCaravan.lootValue * CONST.BOSS_LOOT_MULTIPLIER);
+    bossCaravan.radius = 28; // bigger sprite
+
+    bossCaravan.pathT = 0.02;
+    bossCaravan.direction = 1;
+    const roadPos = world.getRoadPosition(bossCaravan.pathT);
+    bossCaravan.pos.x = roadPos.x;
+    bossCaravan.pos.y = roadPos.y;
+    caravans.push(bossCaravan);
+
+    // Fewer regular caravans on boss waves
+    caravanCount = Math.max(1, Math.floor(caravanCount / 2));
+  }
+
+  const startIdx = caravans.length;
   for (let i = 0; i < caravanCount; i++) {
     // Choose type based on wave
     let type;
@@ -457,7 +681,7 @@ export function spawnWave(wave, world) {
     const caravan = new Caravan(type, world);
 
     // Stagger starting positions along the road
-    caravan.pathT = 0.02 + (i * 0.12);
+    caravan.pathT = 0.02 + ((startIdx + i) * 0.12);
     caravan.direction = 1;
     const roadPos = world.getRoadPosition(caravan.pathT);
     caravan.pos.x = roadPos.x;

@@ -5,7 +5,7 @@ import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Player } from './player.js';
 import { spawnWave } from './caravan.js';
-import { performAttack } from './combat.js';
+import { performAttack, Projectile } from './combat.js';
 import { spawnLoot } from './loot.js';
 import { UI } from './ui.js';
 
@@ -139,6 +139,7 @@ export class Game {
     this.particles = [];
     this.projectiles = [];
     this.floatingTexts = [];
+    this.waveDamageTaken = 0; // track damage for flawless bonus
 
     // Reset shop upgrade tracking
     this.ui.reset();
@@ -158,8 +159,10 @@ export class Game {
     const newCaravans = spawnWave(this.wave, this.world);
     this.caravans = newCaravans;
     this.guards = [];
+    this.projectiles = [];
+    this.waveDamageTaken = 0;
     for (const caravan of newCaravans) {
-      const guards = caravan.spawnGuards();
+      const guards = caravan.spawnGuards(this.wave);
       this.guards.push(...guards);
     }
   }
@@ -241,12 +244,42 @@ export class Game {
 
         // Guard attacks player if close enough
         if (guard.canAttack(this.player.pos)) {
-          const dmg = guard.attack();
-          this.player.takeDamage(dmg);
+          const result = guard.attack(this.player.pos);
+          if (result.ranged) {
+            // Spawn projectile
+            const proj = new Projectile(
+              result.origin.x, result.origin.y,
+              result.dir.x, result.dir.y,
+              result.damage
+            );
+            this.projectiles.push(proj);
+          } else {
+            this.player.takeDamage(result.damage);
+            this.waveDamageTaken += result.damage;
+            this.addFloatingText(
+              this.player.pos.x, this.player.pos.y - 20,
+              `-${result.damage}`, CONST.COLOR_HP_BAR, 16
+            );
+          }
+        }
+      }
+    }
+
+    // Update projectiles
+    if (this.player) {
+      for (let i = this.projectiles.length - 1; i >= 0; i--) {
+        const proj = this.projectiles[i];
+        const hit = proj.update(dt, this.player.pos, this.player.radius);
+        if (hit) {
+          this.player.takeDamage(proj.damage);
+          this.waveDamageTaken += proj.damage;
           this.addFloatingText(
             this.player.pos.x, this.player.pos.y - 20,
-            `-${dmg}`, CONST.COLOR_HP_BAR, 16
+            `-${proj.damage}`, CONST.COLOR_HP_BAR, 16
           );
+        }
+        if (!proj.alive) {
+          this.projectiles.splice(i, 1);
         }
       }
     }
@@ -274,6 +307,18 @@ export class Game {
     if (this.caravans.length > 0) {
       const allDone = this.caravans.every(c => !c.alive);
       if (allDone && this.loots.length === 0) {
+        // Flawless wave bonus
+        if (this.waveDamageTaken === 0) {
+          const bonus = CONST.FLAWLESS_WAVE_BONUS * this.wave;
+          this.score += bonus;
+          if (this.player) {
+            this.player.addGold(bonus);
+            this.addFloatingText(
+              this.player.pos.x, this.player.pos.y - 40,
+              `FLAWLESS! +${bonus}`, '#00ff88', 20
+            );
+          }
+        }
         this.openShop();
       }
     }
@@ -341,6 +386,11 @@ export class Game {
     // Guards
     for (const guard of this.guards) {
       guard.render(r);
+    }
+
+    // Projectiles
+    for (const proj of this.projectiles) {
+      proj.render(r);
     }
 
     // Player (render on top)
