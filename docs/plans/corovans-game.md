@@ -43,7 +43,7 @@ tests/
 
 ## Validation
 
-- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-combat.js && node tests/test-collision.js`
+- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-collision.js`
 - Lint: `echo "no lint configured"` (vanilla JS, no tooling)
 - Manual: open index.html in browser
 
@@ -79,14 +79,14 @@ Create the player entity with movement, rendering, and animation.
 
 Create caravan entities with guards that travel along roads, and a wave-based spawning system.
 
-- [ ] Implement caravan.js with Caravan class (type, speed, loot value, guard slots)
-- [ ] Add three caravan types: donkey (small/fast), wagon (medium), royal carriage (slow/rich)
-- [ ] Implement guard entities attached to caravans (health, damage, detection radius)
-- [ ] Add guard AI: patrol near caravan, chase player when in detection range, return when too far
-- [ ] Implement caravan path-following along roads
-- [ ] Create wave-based spawning system (wave number determines caravan count and types)
-- [ ] Draw procedural sprites for caravans and guards
-- [ ] Wire into game loop
+- [x] Implement caravan.js with Caravan class (type, speed, loot value, guard slots)
+- [x] Add three caravan types: donkey (small/fast), wagon (medium), royal carriage (slow/rich)
+- [x] Implement guard entities attached to caravans (health, damage, detection radius)
+- [x] Add guard AI: patrol near caravan, chase player when in detection range, return when too far
+- [x] Implement caravan path-following along roads
+- [x] Create wave-based spawning system (wave number determines caravan count and types)
+- [x] Draw procedural sprites for caravans and guards
+- [x] Wire into game loop
 
 ### Task 4: Combat and Loot System
 

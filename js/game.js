@@ -4,6 +4,7 @@ import { CONST } from './utils.js';
 import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Player } from './player.js';
+import { spawnWave } from './caravan.js';
 
 // Game states
 export const State = {
@@ -141,6 +142,19 @@ export class Game {
     // Center camera on player
     this.camera.x = this.player.pos.x - this.renderer.width / 2;
     this.camera.y = this.player.pos.y - this.renderer.height / 2;
+
+    // Spawn first wave
+    this._spawnWave();
+  }
+
+  _spawnWave() {
+    const newCaravans = spawnWave(this.wave, this.world);
+    this.caravans = newCaravans;
+    this.guards = [];
+    for (const caravan of newCaravans) {
+      const guards = caravan.spawnGuards();
+      this.guards.push(...guards);
+    }
   }
 
   openShop() {
@@ -150,6 +164,7 @@ export class Game {
   startNextWave() {
     this.wave++;
     this.state = State.PLAYING;
+    this._spawnWave();
   }
 
   gameOver() {
@@ -207,6 +222,36 @@ export class Game {
       }
     }
 
+    // Update caravans
+    for (const caravan of this.caravans) {
+      caravan.update(dt, this.player ? this.player.pos : caravan.pos);
+    }
+
+    // Update guards
+    if (this.player) {
+      for (const guard of this.guards) {
+        guard.update(dt, this.player.pos);
+
+        // Guard attacks player if close enough
+        if (guard.canAttack(this.player.pos)) {
+          const dmg = guard.attack();
+          this.player.takeDamage(dmg);
+          this.addFloatingText(
+            this.player.pos.x, this.player.pos.y - 20,
+            `-${dmg}`, CONST.COLOR_HP_BAR, 16
+          );
+        }
+      }
+    }
+
+    // Check wave completion: all caravans done (dead or escaped)
+    if (this.caravans.length > 0) {
+      const allDone = this.caravans.every(c => !c.alive);
+      if (allDone) {
+        this.openShop();
+      }
+    }
+
     // Update camera shake
     this.camera.updateShake(dt);
 
@@ -238,7 +283,17 @@ export class Game {
     r.save();
     this.camera.apply(r);
 
-    // Player
+    // Caravans
+    for (const caravan of this.caravans) {
+      caravan.render(r);
+    }
+
+    // Guards
+    for (const guard of this.guards) {
+      guard.render(r);
+    }
+
+    // Player (render on top)
     if (this.player) {
       this.player.render(r);
     }
@@ -264,6 +319,10 @@ export class Game {
       // Gold
       r.text(`\u2B50 ${this.player.gold}`, 470, 10, CONST.COLOR_GOLD, 16);
     }
+    // Enemy/caravan count
+    const aliveCaravans = this.caravans.filter(c => c.alive).length;
+    const aliveGuards = this.guards.filter(g => g.alive).length;
+    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 570, 10, '#ddd', 14);
   }
 
   // --- Shop ---
