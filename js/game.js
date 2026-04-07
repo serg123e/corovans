@@ -472,6 +472,8 @@ export class Game {
       const idx = this.ui.handleShopClick(mx, my);
       if (idx >= 0) {
         this.ui.tryPurchase(idx, this.player);
+        this.input.endFrame();
+        return;
       }
 
       // Check "next wave" button
