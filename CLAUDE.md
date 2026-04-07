@@ -23,7 +23,6 @@ js/
   audio.js          - Web Audio API sound generation (no audio files)
   utils.js          - Vec2 class, collision helpers, math utilities, game constants (CONST)
 tests/
-  test-utils.js     - Minimal test runner (assert/run/report)
   test-vector.js    - Vec2 and collision utility tests
   test-player.js    - Player movement and stats tests
   test-caravan.js   - Caravan, guard, and wave spawning tests
@@ -45,6 +44,6 @@ tests/
 - All game constants live in `CONST` object in `js/utils.js`
 - Vec2 operations return new Vec2 (immutable style)
 - Entity pattern: classes with `update(dt, ...)` and `render(renderer)` methods
-- Tests use a custom minimal runner in `tests/test-utils.js` (no test framework)
+- Tests use inline assert helpers (no test framework, each file is self-contained)
 - Procedural rendering only -- no image/sprite/audio assets
 - Fixed-timestep game loop at 60 FPS with accumulator pattern

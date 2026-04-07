@@ -477,6 +477,7 @@ export class Game {
       // Check "next wave" button
       if (this.ui.isNextWaveClicked(mx, my)) {
         this.startNextWave();
+        this.input.endFrame();
         return;
       }
     }
