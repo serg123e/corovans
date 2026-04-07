@@ -43,7 +43,7 @@ tests/
 
 ## Validation
 
-- Tests: `node tests/test-utils.js && node tests/test-combat.js && node tests/test-collision.js && node tests/test-vector.js`
+- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-combat.js && node tests/test-collision.js`
 - Lint: `echo "no lint configured"` (vanilla JS, no tooling)
 - Manual: open index.html in browser
 
@@ -67,13 +67,13 @@ Set up the core engine: HTML structure, game loop with fixed timestep, canvas re
 
 Create the player entity with movement, rendering, and animation.
 
-- [ ] Implement player.js with Player class (position, velocity, health, gold, stats)
-- [ ] Add WASD/arrow key movement with acceleration and friction
-- [ ] Draw player character as a procedural pixel-art bandit sprite
-- [ ] Add idle and walking animation states
-- [ ] Integrate player with camera (camera follows player)
-- [ ] Add map boundary collision to keep player in world
-- [ ] Wire player into game loop (update + render)
+- [x] Implement player.js with Player class (position, velocity, health, gold, stats)
+- [x] Add WASD/arrow key movement with acceleration and friction
+- [x] Draw player character as a procedural pixel-art bandit sprite
+- [x] Add idle and walking animation states
+- [x] Integrate player with camera (camera follows player)
+- [x] Add map boundary collision to keep player in world
+- [x] Wire player into game loop (update + render)
 
 ### Task 3: Caravans, Guards, and Spawning
 

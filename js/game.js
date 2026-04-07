@@ -3,6 +3,7 @@
 import { CONST } from './utils.js';
 import { Camera } from './camera.js';
 import { World } from './world.js';
+import { Player } from './player.js';
 
 // Game states
 export const State = {
@@ -134,9 +135,12 @@ export class Game {
     this.projectiles = [];
     this.floatingTexts = [];
 
-    // Center camera on world center initially
-    this.camera.x = this.world.width / 2 - this.renderer.width / 2;
-    this.camera.y = this.world.height / 2 - this.renderer.height / 2;
+    // Create player at world center
+    this.player = new Player(this.world.width / 2, this.world.height / 2);
+
+    // Center camera on player
+    this.camera.x = this.player.pos.x - this.renderer.width / 2;
+    this.camera.y = this.player.pos.y - this.renderer.height / 2;
   }
 
   openShop() {
@@ -192,6 +196,17 @@ export class Game {
   // --- Playing ---
 
   _updatePlaying(dt) {
+    // Update player
+    if (this.player) {
+      this.player.update(dt, this.input, this.world.width, this.world.height);
+
+      // Check for player death
+      if (!this.player.alive) {
+        this.gameOver();
+        return;
+      }
+    }
+
     // Update camera shake
     this.camera.updateShake(dt);
 
@@ -223,6 +238,11 @@ export class Game {
     r.save();
     this.camera.apply(r);
 
+    // Player
+    if (this.player) {
+      this.player.render(r);
+    }
+
     // Floating texts
     for (const ft of this.floatingTexts) {
       const alpha = Math.max(0, ft.life / ft.maxLife);
@@ -233,10 +253,17 @@ export class Game {
 
     r.restore();
 
-    // HUD placeholder
+    // HUD
     r.rect(0, 0, r.width, CONST.HUD_HEIGHT, 'rgba(0,0,0,0.5)');
     r.text(`Волна: ${this.wave}`, 10, 10, '#fff', 16);
     r.text(`Счёт: ${this.score}`, 150, 10, CONST.COLOR_GOLD, 16);
+    if (this.player) {
+      // HP bar in HUD
+      r.healthBar(280, 12, 100, 14, this.player.hp / this.player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
+      r.text(`${this.player.hp}/${this.player.maxHp}`, 390, 10, '#fff', 14);
+      // Gold
+      r.text(`\u2B50 ${this.player.gold}`, 470, 10, CONST.COLOR_GOLD, 16);
+    }
   }
 
   // --- Shop ---
