@@ -43,7 +43,7 @@ tests/
 
 ## Validation
 
-- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-collision.js`
+- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js`
 - Lint: `echo "no lint configured"` (vanilla JS, no tooling)
 - Manual: open index.html in browser
 
@@ -106,14 +106,14 @@ Implement melee combat, health, damage, loot drops, and collection.
 
 Create all user interface elements: in-game HUD, main menu, game over screen, and upgrade shop.
 
-- [ ] Implement ui.js with UI class managing all screens
-- [ ] Create main menu screen with title "КОРОВАНЫ", start button, and brief instructions
-- [ ] Add in-game HUD: health bar, gold counter, wave number, enemy count
-- [ ] Create game over screen showing stats (waves survived, gold earned, caravans robbed)
-- [ ] Implement between-wave shop screen with upgrade options
-- [ ] Add upgrades: increase damage, increase max HP, increase speed, increase attack range
-- [ ] Implement shop purchasing logic (spend gold, apply stat changes)
-- [ ] Add wave transition: all caravans cleared -> show shop -> start next wave
+- [x] Implement ui.js with UI class managing all screens
+- [x] Create main menu screen with title "КОРОВАНЫ", start button, and brief instructions
+- [x] Add in-game HUD: health bar, gold counter, wave number, enemy count
+- [x] Create game over screen showing stats (waves survived, gold earned, caravans robbed)
+- [x] Implement between-wave shop screen with upgrade options
+- [x] Add upgrades: increase damage, increase max HP, increase speed, increase attack range
+- [x] Implement shop purchasing logic (spend gold, apply stat changes)
+- [x] Add wave transition: all caravans cleared -> show shop -> start next wave
 
 ### Task 6: Progression, Difficulty, and Enemy Variety
 

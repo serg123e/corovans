@@ -7,6 +7,7 @@ import { Player } from './player.js';
 import { spawnWave } from './caravan.js';
 import { performAttack } from './combat.js';
 import { spawnLoot } from './loot.js';
+import { UI } from './ui.js';
 
 // Game states
 export const State = {
@@ -22,6 +23,7 @@ export class Game {
     this.input = input;
     this.camera = new Camera(renderer.width, renderer.height);
     this.world = new World();
+    this.ui = new UI();
 
     this.state = State.MENU;
     this.wave = 0;
@@ -138,6 +140,9 @@ export class Game {
     this.projectiles = [];
     this.floatingTexts = [];
 
+    // Reset shop upgrade tracking
+    this.ui.reset();
+
     // Create player at world center
     this.player = new Player(this.world.width / 2, this.world.height / 2);
 
@@ -182,32 +187,9 @@ export class Game {
   }
 
   _renderMenu(r) {
-    const cx = r.width / 2;
-    const cy = r.height / 2;
-
     // Background - render world as backdrop
     this.world.render(r, this.camera);
-
-    // Overlay
-    r.setAlpha(0.7);
-    r.rect(0, 0, r.width, r.height, '#1a1a2e');
-    r.resetAlpha();
-
-    // Title
-    r.textOutlined('КОРОВАНЫ', cx, cy - 100, '#ffd700', '#000', 64, 'center', 'middle');
-
-    // Subtitle
-    r.textOutlined('грабь корованы!', cx, cy - 30, '#e8c872', '#000', 24, 'center', 'middle');
-
-    // Instructions
-    r.textOutlined('WASD / стрелки - движение', cx, cy + 40, '#ccc', '#000', 16, 'center', 'middle');
-    r.textOutlined('Пробел / клик - атака', cx, cy + 65, '#ccc', '#000', 16, 'center', 'middle');
-
-    // Start prompt
-    const blink = Math.sin(performance.now() / 300) > 0;
-    if (blink) {
-      r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 130, '#fff', '#000', 20, 'center', 'middle');
-    }
+    this.ui.renderMenu(r);
   }
 
   // --- Playing ---
@@ -376,39 +358,39 @@ export class Game {
 
     r.restore();
 
-    // HUD
-    r.rect(0, 0, r.width, CONST.HUD_HEIGHT, 'rgba(0,0,0,0.5)');
-    r.text(`Волна: ${this.wave}`, 10, 10, '#fff', 16);
-    r.text(`Счёт: ${this.score}`, 150, 10, CONST.COLOR_GOLD, 16);
-    if (this.player) {
-      // HP bar in HUD
-      r.healthBar(280, 12, 100, 14, this.player.hp / this.player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
-      r.text(`${this.player.hp}/${this.player.maxHp}`, 390, 10, '#fff', 14);
-      // Gold
-      r.text(`\u2B50 ${this.player.gold}`, 470, 10, CONST.COLOR_GOLD, 16);
-    }
-    // Enemy/caravan count
-    const aliveCaravans = this.caravans.filter(c => c.alive).length;
-    const aliveGuards = this.guards.filter(g => g.alive).length;
-    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 570, 10, '#ddd', 14);
+    // HUD overlay
+    this.ui.renderHUD(r, this);
   }
 
   // --- Shop ---
 
   _updateShop(dt) {
+    // Handle mouse clicks on shop items
+    if (this.input.mouse.clicked && this.player) {
+      const mx = this.input.mouse.x;
+      const my = this.input.mouse.y;
+
+      // Check upgrade buttons
+      const idx = this.ui.handleShopClick(mx, my);
+      if (idx >= 0) {
+        this.ui.tryPurchase(idx, this.player);
+      }
+
+      // Check "next wave" button
+      if (this.ui.isNextWaveClicked(mx, my)) {
+        this.startNextWave();
+        return;
+      }
+    }
+
+    // Keyboard shortcut to start next wave
     if (this.input.wasPressed('Space') || this.input.wasPressed('Enter')) {
       this.startNextWave();
     }
   }
 
   _renderShop(r) {
-    const cx = r.width / 2;
-    const cy = r.height / 2;
-
-    r.rect(0, 0, r.width, r.height, '#1a1a2e');
-    r.textOutlined('МАГАЗИН', cx, 60, '#ffd700', '#000', 40, 'center', 'middle');
-    r.textOutlined(`Золото: ${this.player ? this.player.gold : 0}`, cx, 110, CONST.COLOR_GOLD, '#000', 20, 'center', 'middle');
-    r.textOutlined('[ Пробел - следующая волна ]', cx, cy + 200, '#aaa', '#000', 16, 'center', 'middle');
+    this.ui.renderShop(r, this.player);
   }
 
   // --- Game Over ---
@@ -420,19 +402,7 @@ export class Game {
   }
 
   _renderGameOver(r) {
-    const cx = r.width / 2;
-    const cy = r.height / 2;
-
-    r.rect(0, 0, r.width, r.height, '#1a1a2e');
-    r.textOutlined('КОНЕЦ ИГРЫ', cx, cy - 80, '#e74c3c', '#000', 48, 'center', 'middle');
-    r.textOutlined(`Волн пережито: ${this.wave}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Корованов ограблено: ${this.caravansRobbed}`, cx, cy + 25, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Счёт: ${this.score}`, cx, cy + 60, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
-
-    const blink = Math.sin(performance.now() / 300) > 0;
-    if (blink) {
-      r.textOutlined('[ Нажми чтобы продолжить ]', cx, cy + 130, '#aaa', '#000', 16, 'center', 'middle');
-    }
+    this.ui.renderGameOver(r, this);
   }
 
   // --- Helpers ---
