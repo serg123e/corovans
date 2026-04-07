@@ -1,6 +1,6 @@
 // Audio - Web Audio API sound generation (no audio files needed)
 
-export class Audio {
+export class GameAudio {
   constructor() {
     this.ctx = null;
     this.masterGain = null;

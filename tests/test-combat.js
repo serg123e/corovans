@@ -247,7 +247,7 @@ function mockAttacker(x, y, facingX = 1, facingY = 0, radius = 12) {
   const loot = new Loot(100, 100, 25);
   loot.vel = new Vec2(0, 0); // no scatter
   const playerPos = new Vec2(100, 100); // standing on it
-  const collected = loot.update(1 / 60, playerPos);
+  const collected = loot.update(1 / 60, playerPos, 2400, 1600);
   assert(collected === 25, 'Loot returns value when collected');
   assert(!loot.alive, 'Loot dies when collected');
 }
@@ -257,24 +257,21 @@ function mockAttacker(x, y, facingX = 1, facingY = 0, radius = 12) {
   const loot = new Loot(100, 100, 25);
   loot.vel = new Vec2(0, 0);
   const playerPos = new Vec2(300, 300);
-  const collected = loot.update(1 / 60, playerPos);
+  const collected = loot.update(1 / 60, playerPos, 2400, 1600);
   assert(collected === 0, 'Loot returns 0 when not collected');
   assert(loot.alive, 'Loot stays alive when not collected');
 }
 
 {
-  // Loot magnets toward player when close
+  // Loot magnets toward player when close (dist=20, within magnet range=40, outside collection range=18)
   const loot = new Loot(100, 100, 10);
   loot.vel = new Vec2(0, 0);
-  const playerPos = new Vec2(120, 100); // within magnet range (40)
+  const playerPos = new Vec2(120, 100);
   const startDist = loot.pos.dist(playerPos);
-  loot.update(1 / 60, playerPos);
-  if (loot.alive) { // might have collected
-    const endDist = loot.pos.dist(playerPos);
-    assert(endDist < startDist, 'Loot moves toward player when in magnet range');
-  } else {
-    passed++; // collected, which is also fine
-  }
+  loot.update(1 / 60, playerPos, 2400, 1600);
+  assert(loot.alive, 'Loot stays alive when in magnet range but outside collection range');
+  const endDist = loot.pos.dist(playerPos);
+  assert(endDist < startDist, 'Loot moves toward player when in magnet range');
 }
 
 // --- spawnLoot ---

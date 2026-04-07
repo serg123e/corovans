@@ -19,7 +19,7 @@ export class Loot {
     this.bobTimer = randRange(0, Math.PI * 2);
   }
 
-  update(dt, playerPos) {
+  update(dt, playerPos, worldWidth, worldHeight) {
     if (!this.alive) return;
 
     // Apply scatter velocity with friction
@@ -27,6 +27,13 @@ export class Loot {
       const frictionMul = Math.exp(-this.friction * dt);
       this.vel = this.vel.mul(frictionMul);
       this.pos = this.pos.add(this.vel.mul(dt));
+
+      // Clamp to world bounds so coins can't scatter out of reach
+      const margin = this.radius;
+      if (this.pos.x < margin) this.pos = new Vec2(margin, this.pos.y);
+      if (this.pos.x > worldWidth - margin) this.pos = new Vec2(worldWidth - margin, this.pos.y);
+      if (this.pos.y < margin) this.pos = new Vec2(this.pos.x, margin);
+      if (this.pos.y > worldHeight - margin) this.pos = new Vec2(this.pos.x, worldHeight - margin);
     }
 
     // Bob animation

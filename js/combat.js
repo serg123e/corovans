@@ -87,7 +87,7 @@ export function performAttack(player, guards, caravans) {
   // Find guards in range
   const hitGuards = findAttackTargets(player, guards, player.attackRange);
   for (const guard of hitGuards) {
-    const dmg = calcDamage(player.damage);
+    const dmg = calcDamage(player.damage, guard.armor || 0);
     guard.takeDamage(dmg);
     results.push({ target: guard, damage: dmg, type: 'guard' });
   }

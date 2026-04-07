@@ -272,7 +272,7 @@ export class UI {
 
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
     r.textOutlined('КОНЕЦ ИГРЫ', cx, cy - 80, '#e74c3c', '#000', 48, 'center', 'middle');
-    r.textOutlined(`Волн пережито: ${game.wave}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(`Погиб на волне: ${game.wave}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
     r.textOutlined(`Корованов ограблено: ${game.caravansRobbed}`, cx, cy + 25, '#fff', '#000', 20, 'center', 'middle');
     r.textOutlined(`Счёт: ${game.score}`, cx, cy + 60, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
 

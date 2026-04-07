@@ -145,7 +145,8 @@ export class World {
         if (this.tiles[row * this.cols + col] !== 0) continue;
       }
 
-      const type = rng() < 0.4 ? 'rock' : rng() < 0.7 ? 'bush' : 'cactus';
+      const roll = rng();
+      const type = roll < 0.4 ? 'rock' : roll < 0.7 ? 'bush' : 'cactus';
       const size = 4 + rng() * 8;
       decorations.push({ x, y, type, size });
     }

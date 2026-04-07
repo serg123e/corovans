@@ -9,7 +9,7 @@ import { performAttack, Projectile } from './combat.js';
 import { spawnLoot } from './loot.js';
 import { UI } from './ui.js';
 import { spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, updateParticles, renderParticles } from './particles.js';
-import { Audio } from './audio.js';
+import { GameAudio } from './audio.js';
 
 // Game states
 export const State = {
@@ -27,7 +27,7 @@ export class Game {
     this.world = new World();
     this.ui = new UI();
 
-    this.audio = new Audio();
+    this.audio = new GameAudio();
     this.state = State.MENU;
     this.wave = 0;
     this.score = 0;
@@ -193,6 +193,7 @@ export class Game {
   _updateMenu(dt) {
     if (this.input.wasPressed('Space') || this.input.wasPressed('Enter') || this.input.mouse.clicked) {
       this.startGame();
+      this.input.endFrame(); // consume input so it doesn't trigger attack on first frame
     }
   }
 
@@ -313,7 +314,7 @@ export class Game {
     if (this.player) {
       for (let i = this.loots.length - 1; i >= 0; i--) {
         const loot = this.loots[i];
-        const collected = loot.update(dt, this.player.pos);
+        const collected = loot.update(dt, this.player.pos, this.world.width, this.world.height);
         if (collected > 0) {
           this.player.addGold(collected);
           this.score += collected;
@@ -483,6 +484,7 @@ export class Game {
     // Keyboard shortcut to start next wave
     if (this.input.wasPressed('Space') || this.input.wasPressed('Enter')) {
       this.startNextWave();
+      this.input.endFrame(); // consume input so it doesn't trigger attack on first frame
     }
   }
 
@@ -495,6 +497,7 @@ export class Game {
   _updateGameOver(dt) {
     if (this.input.wasPressed('Space') || this.input.wasPressed('Enter') || this.input.mouse.clicked) {
       this.state = State.MENU;
+      this.input.endFrame(); // consume input so it doesn't immediately start a new game
     }
   }
 
@@ -514,6 +517,8 @@ export class Game {
 
   destroy() {
     window.removeEventListener('resize', this._onResize);
+    this.input.destroy();
+    this.audio.stopWind();
     this.stop();
   }
 }

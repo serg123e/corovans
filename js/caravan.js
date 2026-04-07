@@ -279,6 +279,7 @@ export class Guard {
     this.type = type;
 
     // Stats based on guard type
+    this.armor = 0;
     switch (type) {
       case GuardType.ARMORED:
         this.maxHp = CONST.ARMORED_GUARD_HP;
@@ -287,6 +288,7 @@ export class Guard {
         this.detectionRange = CONST.ARMORED_GUARD_DETECTION_RANGE;
         this.attackRange = CONST.GUARD_ATTACK_RANGE;
         this.attackCooldown = CONST.GUARD_ATTACK_COOLDOWN;
+        this.armor = CONST.ARMORED_GUARD_ARMOR;
         break;
       case GuardType.ARCHER:
         this.maxHp = CONST.ARCHER_GUARD_HP;
@@ -685,6 +687,8 @@ export function spawnWave(wave, world) {
     bossCaravan.lootValue = Math.round(bossCaravan.lootValue * CONST.BOSS_LOOT_MULTIPLIER);
     bossCaravan.radius = 28; // bigger sprite
 
+    // Override guard count for boss caravan
+    bossCaravan.def = { ...bossCaravan.def, guardCount: CONST.BOSS_GUARD_COUNT };
     bossCaravan.pathT = 0.02;
     bossCaravan.direction = 1;
     const roadPos = world.getRoadPosition(bossCaravan.pathT);
