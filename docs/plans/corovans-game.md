@@ -43,7 +43,7 @@ tests/
 
 ## Validation
 
-- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js`
+- Tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js`
 - Lint: `echo "no lint configured"` (vanilla JS, no tooling)
 - Manual: open index.html in browser
 
@@ -131,13 +131,13 @@ Implement difficulty scaling, enemy variety, and boss waves.
 
 Add all the polish that makes the game feel satisfying.
 
-- [ ] Implement particles.js with particle system (emitters, gravity, fade)
-- [ ] Add dust particles when player/entities move
-- [ ] Add hit particles (sparks on attack, gold sparkle on loot pickup)
-- [ ] Add screen shake on dealing/receiving damage
-- [ ] Implement audio.js with Web Audio API sound generation
-- [ ] Add sound effects: attack swoosh, hit impact, coin pickup, guard death, player hurt
-- [ ] Add ambient desert wind background sound
-- [ ] Add entity flash-white on taking damage
-- [ ] Add squash/stretch animation on attacks and landings
-- [ ] Final visual pass: make the title screen look impressive
+- [x] Implement particles.js with particle system (emitters, gravity, fade)
+- [x] Add dust particles when player/entities move
+- [x] Add hit particles (sparks on attack, gold sparkle on loot pickup)
+- [x] Add screen shake on dealing/receiving damage
+- [x] Implement audio.js with Web Audio API sound generation
+- [x] Add sound effects: attack swoosh, hit impact, coin pickup, guard death, player hurt
+- [x] Add ambient desert wind background sound
+- [x] Add entity flash-white on taking damage
+- [x] Add squash/stretch animation on attacks and landings
+- [x] Final visual pass: make the title screen look impressive

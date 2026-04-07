@@ -8,6 +8,8 @@ import { spawnWave } from './caravan.js';
 import { performAttack, Projectile } from './combat.js';
 import { spawnLoot } from './loot.js';
 import { UI } from './ui.js';
+import { spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, updateParticles, renderParticles } from './particles.js';
+import { Audio } from './audio.js';
 
 // Game states
 export const State = {
@@ -25,10 +27,12 @@ export class Game {
     this.world = new World();
     this.ui = new UI();
 
+    this.audio = new Audio();
     this.state = State.MENU;
     this.wave = 0;
     this.score = 0;
     this.caravansRobbed = 0;
+    this._dustTimer = 0;
 
     // Entity lists (populated by later tasks)
     this.player = null;
@@ -129,6 +133,8 @@ export class Game {
   // --- State transitions ---
 
   startGame() {
+    this.audio.init();
+    this.audio.startWind();
     this.state = State.PLAYING;
     this.wave = 1;
     this.score = 0;
@@ -179,6 +185,7 @@ export class Game {
 
   gameOver() {
     this.state = State.GAME_OVER;
+    this.audio.stopWind();
   }
 
   // --- Menu ---
@@ -210,6 +217,7 @@ export class Game {
 
       // Handle player attack
       if (this.input.wantsAttack() && this.player.tryAttack()) {
+        this.audio.playAttack();
         const hits = performAttack(this.player, this.guards, this.caravans);
         for (const hit of hits) {
           // Floating damage number
@@ -218,14 +226,24 @@ export class Game {
             `-${hit.damage}`, '#fff', 16
           );
 
+          // Hit sparks and sound
+          spawnHitSparks(this.particles, hit.target.pos.x, hit.target.pos.y);
+          this.audio.playHit();
+          this.camera.shake(3, 0.1);
+
+          // Flash white on hit
+          hit.target.flashTimer = 0.1;
+
           // Check if guard died
           if (hit.type === 'guard' && !hit.target.alive) {
-            // No loot from individual guards, but check if caravan should drop loot
+            spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
+            this.audio.playGuardDeath();
             this._checkCaravanLoot(hit.target.caravan);
           }
 
           // Check if caravan was destroyed directly
           if (hit.type === 'caravan' && !hit.target.alive) {
+            spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
             this._checkCaravanLoot(hit.target);
           }
         }
@@ -256,6 +274,9 @@ export class Game {
           } else {
             this.player.takeDamage(result.damage);
             this.waveDamageTaken += result.damage;
+            this.player.flashTimer = 0.12;
+            this.camera.shake(4, 0.15);
+            this.audio.playPlayerHurt();
             this.addFloatingText(
               this.player.pos.x, this.player.pos.y - 20,
               `-${result.damage}`, CONST.COLOR_HP_BAR, 16
@@ -273,6 +294,10 @@ export class Game {
         if (hit) {
           this.player.takeDamage(proj.damage);
           this.waveDamageTaken += proj.damage;
+          this.player.flashTimer = 0.12;
+          this.camera.shake(3, 0.12);
+          this.audio.playPlayerHurt();
+          spawnHitSparks(this.particles, this.player.pos.x, this.player.pos.y);
           this.addFloatingText(
             this.player.pos.x, this.player.pos.y - 20,
             `-${proj.damage}`, CONST.COLOR_HP_BAR, 16
@@ -292,6 +317,8 @@ export class Game {
         if (collected > 0) {
           this.player.addGold(collected);
           this.score += collected;
+          spawnGoldSparkle(this.particles, loot.pos.x, loot.pos.y);
+          this.audio.playCoin();
           this.addFloatingText(
             loot.pos.x, loot.pos.y - 10,
             `+${collected}`, CONST.COLOR_GOLD, 14
@@ -302,6 +329,23 @@ export class Game {
         }
       }
     }
+
+    // Dust particles from moving entities
+    this._dustTimer -= dt;
+    if (this._dustTimer <= 0) {
+      this._dustTimer = 0.08;
+      if (this.player && this.player.vel.lenSq() > 400) {
+        spawnDust(this.particles, this.player.pos.x, this.player.pos.y, this.player.vel.x, this.player.vel.y);
+      }
+      for (const guard of this.guards) {
+        if (guard.alive && guard.vel.lenSq() > 400) {
+          spawnDust(this.particles, guard.pos.x, guard.pos.y, guard.vel.x, guard.vel.y);
+        }
+      }
+    }
+
+    // Update particles
+    updateParticles(this.particles, dt);
 
     // Check wave completion: all caravans done (dead or escaped) and all loot collected
     if (this.caravans.length > 0) {
@@ -397,6 +441,9 @@ export class Game {
     if (this.player) {
       this.player.render(r);
     }
+
+    // Particles (over entities)
+    renderParticles(this.particles, r);
 
     // Floating texts
     for (const ft of this.floatingTexts) {

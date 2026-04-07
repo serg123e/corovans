@@ -117,27 +117,60 @@ export class UI {
   renderMenu(r) {
     const cx = r.width / 2;
     const cy = r.height / 2;
+    const t = performance.now() / 1000;
 
-    // Overlay
-    r.setAlpha(0.7);
+    // Overlay with gradient-like bands
+    r.setAlpha(0.75);
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
     r.resetAlpha();
 
-    // Title
+    // Decorative crossed swords behind title
+    const swordY = cy - 100;
+    r.setAlpha(0.2);
+    r.line(cx - 80, swordY - 30, cx + 80, swordY + 30, '#ffd700', 3);
+    r.line(cx + 80, swordY - 30, cx - 80, swordY + 30, '#ffd700', 3);
+    r.resetAlpha();
+
+    // Title with pulsing glow
+    const pulse = 0.85 + 0.15 * Math.sin(t * 2);
+    r.setAlpha(pulse * 0.3);
+    r.textOutlined('КОРОВАНЫ', cx, cy - 99, '#ffaa00', '#000', 68, 'center', 'middle');
+    r.resetAlpha();
     r.textOutlined('КОРОВАНЫ', cx, cy - 100, '#ffd700', '#000', 64, 'center', 'middle');
+
+    // Decorative line under title
+    const lineW = 200;
+    r.setAlpha(0.5);
+    r.line(cx - lineW / 2, cy - 55, cx + lineW / 2, cy - 55, '#ffd700', 1);
+    r.resetAlpha();
 
     // Subtitle
     r.textOutlined('грабь корованы!', cx, cy - 30, '#e8c872', '#000', 24, 'center', 'middle');
 
-    // Instructions
-    r.textOutlined('WASD / стрелки - движение', cx, cy + 40, '#ccc', '#000', 16, 'center', 'middle');
-    r.textOutlined('Пробел / клик - атака', cx, cy + 65, '#ccc', '#000', 16, 'center', 'middle');
+    // Instructions with slightly faded look
+    r.textOutlined('WASD / стрелки - движение', cx, cy + 40, '#aaa', '#000', 16, 'center', 'middle');
+    r.textOutlined('Пробел / клик - атака', cx, cy + 65, '#aaa', '#000', 16, 'center', 'middle');
 
-    // Start prompt
-    const blink = Math.sin(performance.now() / 300) > 0;
-    if (blink) {
-      r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 130, '#fff', '#000', 20, 'center', 'middle');
+    // Animated gold coins drifting down (purely visual using sine)
+    r.setAlpha(0.4);
+    for (let i = 0; i < 5; i++) {
+      const coinX = cx - 160 + i * 80;
+      const coinY = cy + 90 + Math.sin(t * 1.5 + i * 1.3) * 8;
+      r.circle(coinX, coinY, 4, '#ffd700');
+      r.circle(coinX - 1, coinY - 1, 2, '#ffee66');
     }
+    r.resetAlpha();
+
+    // Start prompt with smooth fade instead of harsh blink
+    const promptAlpha = 0.5 + 0.5 * Math.sin(t * 3);
+    r.setAlpha(promptAlpha);
+    r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 130, '#fff', '#000', 20, 'center', 'middle');
+    r.resetAlpha();
+
+    // Version / credits
+    r.setAlpha(0.3);
+    r.text('v1.0', r.width - 40, r.height - 20, '#888', 12, 'right');
+    r.resetAlpha();
   }
 
   renderHUD(r, game) {

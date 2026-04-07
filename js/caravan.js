@@ -318,6 +318,9 @@ export class Guard {
     );
     this.alive = true;
 
+    // Visual juice
+    this.flashTimer = 0;
+
     // Animation - set sprites based on type
     this.animTimer = 0;
     this.animFrame = 0;
@@ -344,6 +347,11 @@ export class Guard {
 
   update(dt, playerPos) {
     if (!this.alive) return;
+
+    // Flash timer
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+    }
 
     // Attack cooldown
     if (this.attackTimer > 0) {
@@ -472,7 +480,17 @@ export class Guard {
     }
 
     const drawSprite = flipH ? sprite.map(row => row.split('').reverse().join('')) : sprite;
-    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, this.palette, 2);
+
+    // Flash white on damage
+    if (this.flashTimer > 0) {
+      const flashPalette = {};
+      for (const key in this.palette) {
+        flashPalette[key] = '#fff';
+      }
+      renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, flashPalette, 2);
+    } else {
+      renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, this.palette, 2);
+    }
 
     // Health bar when damaged
     if (this.hp < this.maxHp) {
@@ -524,6 +542,9 @@ export class Caravan {
     // State
     this.looted = false; // has been destroyed and loot dropped
     this.isBoss = false; // set to true for boss caravans
+
+    // Visual juice
+    this.flashTimer = 0;
   }
 
   spawnGuards(wave = 1) {
@@ -556,6 +577,8 @@ export class Caravan {
 
   update(dt, playerPos) {
     if (!this.alive) return;
+
+    if (this.flashTimer > 0) this.flashTimer -= dt;
 
     // Advance along road
     // Convert speed to path parameter change
@@ -609,7 +632,17 @@ export class Caravan {
     const flipH = this.direction < 0;
     const drawSprite = flipH ? sprite.map(row => row.split('').reverse().join('')) : sprite;
     const spriteScale = this.isBoss ? 3 : 2;
-    renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, palette, spriteScale);
+
+    // Flash white on damage
+    if (this.flashTimer > 0) {
+      const flashPalette = {};
+      for (const key in palette) {
+        flashPalette[key] = '#fff';
+      }
+      renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, flashPalette, spriteScale);
+    } else {
+      renderer.pixelSprite(this.pos.x, this.pos.y, drawSprite, palette, spriteScale);
+    }
 
     // Boss indicator
     if (this.isBoss) {

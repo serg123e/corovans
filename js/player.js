@@ -112,6 +112,11 @@ export class Player {
     this.isAttacking = false;
     this.attackAnimTimer = 0;
     this.attackAnimDuration = 0.2; // seconds the attack anim plays
+
+    // Visual juice
+    this.flashTimer = 0; // flash white on damage
+    this.squashX = 1;    // squash/stretch scale
+    this.squashY = 1;
   }
 
   update(dt, input, worldW, worldH) {
@@ -164,10 +169,22 @@ export class Player {
     this.isAttacking = true;
     this.attackAnimTimer = this.attackAnimDuration;
     this.anim = 'attack';
+    // Squash/stretch on attack: stretch horizontally in facing direction
+    this.squashX = 1.3;
+    this.squashY = 0.75;
     return true;
   }
 
   _updateAnimation(dt) {
+    // Flash timer
+    if (this.flashTimer > 0) {
+      this.flashTimer -= dt;
+    }
+
+    // Squash/stretch: lerp back to 1
+    this.squashX += (1 - this.squashX) * Math.min(1, 12 * dt);
+    this.squashY += (1 - this.squashY) * Math.min(1, 12 * dt);
+
     // Attack animation takes priority
     if (this.attackAnimTimer > 0) {
       this.attackAnimTimer -= dt;
@@ -213,7 +230,29 @@ export class Player {
     const flipH = this.facing.x < -0.1;
     const drawSprite = flipH ? sprite.map(row => row.split('').reverse().join('')) : sprite;
 
-    renderer.pixelSprite(x, y, drawSprite, SPRITE_PALETTE, 2);
+    // Apply squash/stretch transform
+    const needsTransform = Math.abs(this.squashX - 1) > 0.01 || Math.abs(this.squashY - 1) > 0.01;
+    if (needsTransform) {
+      renderer.save();
+      renderer.translate(x, y);
+      renderer.scale(this.squashX, this.squashY);
+      renderer.translate(-x, -y);
+    }
+
+    // Flash white on damage
+    if (this.flashTimer > 0) {
+      const flashPalette = {};
+      for (const key in SPRITE_PALETTE) {
+        flashPalette[key] = '#fff';
+      }
+      renderer.pixelSprite(x, y, drawSprite, flashPalette, 2);
+    } else {
+      renderer.pixelSprite(x, y, drawSprite, SPRITE_PALETTE, 2);
+    }
+
+    if (needsTransform) {
+      renderer.restore();
+    }
 
     // Draw health bar above player if damaged
     if (this.hp < this.maxHp) {
@@ -233,6 +272,9 @@ export class Player {
   takeDamage(amount) {
     if (!this.alive) return;
     this.hp -= amount;
+    // Squash on hit
+    this.squashX = 0.7;
+    this.squashY = 1.3;
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
