@@ -184,7 +184,7 @@ function assert(condition, message) {
   ui.draftOffer = [card];
   const orig = player.attackRange;
   ui.pickCard(0, player);
-  assert(player.attackRange === orig + 4, 'attackRange card: +4');
+  assert(player.attackRange === orig + 2, 'attackRange card: +2');
 }
 
 // --- cooldown card ---
@@ -207,7 +207,7 @@ function assert(condition, message) {
   ui.draftOffer = [card];
   assert(player.lifestealPct === 0, 'lifesteal: starts at 0');
   ui.pickCard(0, player);
-  assert(Math.abs(player.lifestealPct - 0.10) < 0.0001, 'lifesteal: +10%');
+  assert(Math.abs(player.lifestealPct - 0.07) < 0.0001, 'lifesteal: +7%');
 }
 
 // --- thorns card ---
@@ -239,7 +239,7 @@ function assert(condition, message) {
   ui.draftOffer = [card];
   const orig = player.regenPerSec;
   ui.pickCard(0, player);
-  assert(player.regenPerSec === orig + 2, 'regen: +2 per sec');
+  assert(player.regenPerSec === orig + 1, 'regen: +1 per sec');
 }
 
 // --- dashCooldown card ---

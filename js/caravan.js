@@ -584,13 +584,14 @@ export class Caravan {
       const gy = this.pos.y + Math.sin(angle) * offset;
 
       // Choose guard type based on wave
-      // Armored from wave 4+, archers from wave 6+
+      // Armored from wave 4+, archers from wave 7+ (wave 6 already ramps
+      // caravan count + armored density; adding archers on top stalls runs).
       let guardType = GuardType.BASIC;
       if (wave >= 4) {
         const roll = rand();
         if (roll < 0.35) {
           guardType = GuardType.ARMORED;
-        } else if (wave >= 6 && roll < 0.60) {
+        } else if (wave >= 7 && roll < 0.60) {
           guardType = GuardType.ARCHER;
         }
       }

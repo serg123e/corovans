@@ -291,7 +291,7 @@ export class Simulator {
           // End-of-wave free draft. Policies may reroll before picking, so
           // loop until they pick or skip. Cap iterations so a broken policy
           // that keeps requesting rerolls can't burn infinite gold here.
-          ui.beginFreeDraft(rng);
+          ui.beginFreeDraft(rng, player);
           logger.logShopOpened('wave', wave);
           const MAX_SHOP_DECISIONS = 8;
           let closed = false;

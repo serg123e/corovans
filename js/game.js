@@ -224,7 +224,7 @@ export class Game {
     this.state = State.SHOP;
     this.shopOrigin = origin;
     if (origin === 'wave') {
-      this.ui.beginFreeDraft();
+      this.ui.beginFreeDraft(null, this.player);
     } else {
       this.ui.beginPaidDraft(this.wave);
     }

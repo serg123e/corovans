@@ -67,11 +67,11 @@ export const CARDS = [
   {
     id: 'attackRange',
     label: 'Длинная рука',
-    desc: '+4 к радиусу атаки',
+    desc: '+2 к радиусу атаки',
     icon: '🗡',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.attackRange += 4; },
+    apply: (p) => { p.attackRange += 2; },
   },
   {
     id: 'cooldown',
@@ -86,11 +86,11 @@ export const CARDS = [
   {
     id: 'lifesteal',
     label: 'Вампиризм',
-    desc: '+10% HP от нанесённого урона',
+    desc: '+7% HP от нанесённого урона',
     icon: '🩸',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.lifestealPct += 0.10; },
+    apply: (p) => { p.lifestealPct += 0.07; },
   },
   {
     id: 'magnet',
@@ -113,11 +113,11 @@ export const CARDS = [
   {
     id: 'regen',
     label: 'Второе дыхание',
-    desc: '+2 HP/сек регенерации',
+    desc: '+1 HP/сек регенерации',
     icon: '💚',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.regenPerSec += 2; },
+    apply: (p) => { p.regenPerSec += 1; },
   },
   {
     id: 'dashCooldown',
@@ -239,10 +239,16 @@ export class UI {
     return set;
   }
 
-  // Begin a free draft (end-of-wave). Always rolls a fresh offer.
-  beginFreeDraft(rng = null) {
+  // Begin a free draft (end-of-wave). Always rolls a fresh offer. Heals the
+  // player for 20% of max HP as a "breath between waves" — applied before the
+  // cards roll so it doesn't interact with regen/lifesteal gating.
+  beginFreeDraft(rng = null, player = null) {
     this.draftMode = DraftMode.FREE;
     this.rerollCount = 0;
+    if (player && player.alive) {
+      const heal = Math.floor(player.maxHp * 0.2);
+      player.hp = Math.min(player.maxHp, player.hp + heal);
+    }
     this.draftOffer = drawCards(DRAFT_SIZE, this._ownedUnstackable(), rng);
   }
 
