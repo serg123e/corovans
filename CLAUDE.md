@@ -52,6 +52,8 @@ version.json        - Build tag (commit sha) loaded at boot by main.js; embedded
 
 ## Commands
 
+Common operations live in the `Makefile` — `make help` lists them. Shortcuts: `make test`, `make sim`, `make combo`, `make telemetry`, `make ngrok`, `make version`, `make play`. The raw commands below are the source of truth for the targets.
+
 - Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js && node tests/test-input.js && node tests/test-session-logger.js && node tests/test-simulator.js`
 - Play: open `index.html` in browser (no server needed, uses ES modules)
 - Update build tag before playtesting: `./scripts/update-version.sh` (or symlink to `.git/hooks/post-commit`)
