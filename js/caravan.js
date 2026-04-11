@@ -1,6 +1,7 @@
 // Caravan - caravans, guards, and wave spawning
 
-import { Vec2, CONST, clamp, randRange, randInt } from './utils.js';
+import { Vec2, CONST, clamp } from './utils.js';
+import { randFn } from './rng.js';
 
 // Caravan types
 export const CaravanType = {
@@ -314,7 +315,7 @@ export class Guard {
 
     // AI
     this.state = GuardState.PATROL;
-    const rand = rng ? rng.next : Math.random;
+    const rand = randFn(rng);
     this.patrolOffset = new Vec2(
       (rand() - 0.5) * 40,
       (rand() - 0.5) * 40
@@ -555,7 +556,7 @@ export class Caravan {
     this.alive = true;
 
     // Loot (seeded when called from the sim so runs reproduce exactly)
-    const rand = rng ? rng.next : Math.random;
+    const rand = randFn(rng);
     this.lootValue = Math.floor(def.lootMin + rand() * (def.lootMax - def.lootMin + 1));
 
     // Guards
@@ -574,7 +575,7 @@ export class Caravan {
     // Extra guards from wave scaling: +1 guard per 3 waves
     const extraGuards = Math.floor(wave / 3);
     const count = this.def.guardCount + extraGuards;
-    const rand = rng ? rng.next : Math.random;
+    const rand = randFn(rng);
 
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count;
@@ -751,7 +752,7 @@ export function resolveGuardCollisions(guards, caravans) {
 export function spawnWave(wave, world, rng = null) {
   const caravans = [];
   const isBossWave = wave > 0 && wave % 5 === 0;
-  const rand = rng ? rng.next : Math.random;
+  const rand = randFn(rng);
 
   // Scaling: more caravans as waves progress
   // Wave 1: 1, Wave 2: 1, Wave 3: 2, Wave 4: 2, Wave 5 (boss): 1 boss + 1 normal, etc.

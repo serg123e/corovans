@@ -1,6 +1,7 @@
 // Loot - gold coin entities that drop from defeated caravans and can be collected
 
 import { Vec2, CONST } from './utils.js';
+import { randFn } from './rng.js';
 
 export class Loot {
   constructor(x, y, value, rng = null) {
@@ -9,8 +10,10 @@ export class Loot {
     this.radius = CONST.LOOT_RADIUS;
     this.alive = true;
 
-    // Scatter animation: coins fly out a bit when spawned
-    const rand = rng ? rng.next : Math.random;
+    // Scatter animation: coins fly out a bit when spawned. Use the
+    // injected seeded rng when available (sim reproducibility) and fall
+    // back to Math.random in the live game.
+    const rand = randFn(rng);
     const angle = rand() * Math.PI * 2;
     const speed = 40 + rand() * 60;
     this.vel = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);

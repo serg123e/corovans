@@ -14,15 +14,17 @@ globalThis.localStorage = {
   clear() { this._store = {}; },
 };
 
-import { Simulator, runBatch, summarizeBatch, perWaveStats } from '../js/sim/simulator.js';
+import { Simulator, runBatch, summarizeBatch, perWaveStats, comboScan } from '../js/sim/simulator.js';
 import {
   AIPolicy,
   GreedyPolicy,
   RandomCardPolicy,
   RunnerPolicy,
+  SmartPolicy,
   POLICIES,
 } from '../js/sim/policies.js';
 import { SimInput } from '../js/sim/sim-input.js';
+import { SessionLogger } from '../js/session-logger.js';
 import { Vec2 } from '../js/utils.js';
 
 let passed = 0;
@@ -158,6 +160,154 @@ function resetStorage() {
   }
 }
 
+// --- SmartPolicy: dodges incoming arrow by stepping perpendicular ---
+{
+  const policy = new SmartPolicy();
+  // Arrow flying east toward player, 60px away. Player should step
+  // perpendicular (north or south) with dash ready.
+  const view = {
+    wave: 3,
+    player: {
+      pos: new Vec2(500, 500),
+      hp: 80, maxHp: 100, gold: 0, damage: 15, speed: 160,
+      radius: 12, attackRange: 28, attackTimer: 0,
+      dashCooldownTimer: 0, dashCooldownMax: 1,
+      iframeTimer: 0, alive: true,
+      lifestealPct: 0, thornsPct: 0, magnetRangeMul: 1,
+    },
+    guards: [],
+    caravans: [],
+    projectiles: [
+      { alive: true, pos: new Vec2(440, 500), dir: new Vec2(1, 0), damage: 6 },
+    ],
+    loots: [],
+    shop: null,
+  };
+  const action = policy.decidePlaying(view);
+  assert(action.attack === false, 'Smart dodge: no attack while dodging');
+  assert(action.dash === true, 'Smart dodge: dashes when cooldown ready');
+  assert(Math.abs(action.moveX) < 0.01, 'Smart dodge: no move along arrow axis');
+  assert(Math.abs(action.moveY) > 0.9, 'Smart dodge: perpendicular move (y axis)');
+}
+
+// --- SmartPolicy: ignores projectiles flying away from player ---
+{
+  const policy = new SmartPolicy();
+  const view = {
+    wave: 3,
+    player: {
+      pos: new Vec2(500, 500),
+      hp: 80, maxHp: 100, radius: 12, attackRange: 28,
+      attackTimer: 0, dashCooldownTimer: 0, dashCooldownMax: 1,
+      lifestealPct: 0, thornsPct: 0, magnetRangeMul: 1, alive: true,
+    },
+    guards: [],
+    caravans: [{ alive: true, pos: new Vec2(700, 500), type: 'donkey', radius: 14 }],
+    // Arrow right next to player but heading east, away from us.
+    projectiles: [
+      { alive: true, pos: new Vec2(510, 500), dir: new Vec2(1, 0), damage: 6 },
+    ],
+    loots: [], shop: null,
+  };
+  const action = policy.decidePlaying(view);
+  assert(action.dash === false, 'Smart dodge: does not dash for arrow leaving us');
+  assert(action.moveX > 0.9, 'Smart dodge: still walks to caravan past the arrow');
+}
+
+// --- SmartPolicy: low HP kites away from nearest guard ---
+{
+  const policy = new SmartPolicy();
+  const view = {
+    wave: 5,
+    player: {
+      pos: new Vec2(500, 500),
+      hp: 15, maxHp: 100, radius: 12, attackRange: 28,
+      attackTimer: 0, dashCooldownTimer: 0.5, dashCooldownMax: 1,
+      lifestealPct: 0, thornsPct: 0, magnetRangeMul: 1, alive: true,
+    },
+    guards: [
+      { alive: true, pos: new Vec2(600, 500), type: 'basic', radius: 10, damage: 8 },
+    ],
+    caravans: [{ alive: true, pos: new Vec2(700, 500), type: 'donkey', radius: 14 }],
+    projectiles: [], loots: [], shop: null,
+  };
+  const action = policy.decidePlaying(view);
+  assert(action.attack === false, 'Smart retreat: no attacking at low HP');
+  assert(action.moveX < -0.9, 'Smart retreat: moves away from guard (west)');
+}
+
+// --- SmartPolicy: prioritizes archer over closer basic guard ---
+{
+  const policy = new SmartPolicy();
+  const view = {
+    wave: 3,
+    player: {
+      pos: new Vec2(500, 500),
+      hp: 100, maxHp: 100, radius: 12, attackRange: 28,
+      attackTimer: 0, dashCooldownTimer: 0.5, dashCooldownMax: 1,
+      lifestealPct: 0, thornsPct: 0, magnetRangeMul: 1, alive: true,
+    },
+    guards: [
+      // Basic guard due east, reachable.
+      { alive: true, pos: new Vec2(580, 500), type: 'basic', radius: 10, damage: 8 },
+      // Archer a bit farther south, still within aggro range.
+      { alive: true, pos: new Vec2(500, 620), type: 'archer', radius: 10, damage: 6 },
+    ],
+    caravans: [],
+    projectiles: [], loots: [], shop: null,
+  };
+  const action = policy.decidePlaying(view);
+  // Archer gets the threat nod even though basic is closer, so we should
+  // be heading south (toward the archer), not east.
+  assert(action.moveY > 0.5, 'Smart targeting: heads toward archer (south)');
+  assert(Math.abs(action.moveX) < 0.5, 'Smart targeting: not chasing basic (east)');
+}
+
+// --- SmartPolicy: picks lifesteal first from shop offer ---
+{
+  const policy = new SmartPolicy();
+  const decision = policy.decideShop({
+    mode: 'free',
+    offer: [
+      { id: 'speed' },
+      { id: 'maxHp' },
+      { id: 'lifesteal' },
+      { id: 'glassCannon' },
+    ],
+  });
+  assert(decision.action === 'pick', 'Smart shop: picks a card');
+  assert(decision.index === 2, `Smart shop: picks lifesteal (got ${decision.index})`);
+}
+
+// --- SmartPolicy: falls through to index 0 if no preferred card offered ---
+{
+  const policy = new SmartPolicy();
+  const decision = policy.decideShop({
+    mode: 'free',
+    offer: [
+      { id: 'speed' },
+      { id: 'magnet' },
+      { id: 'glassCannon' },
+    ],
+  });
+  assert(decision.index === 0, 'Smart shop: falls back to index 0');
+}
+
+// --- SmartPolicy integration: real sim reaches deeper waves than greedy ---
+{
+  resetStorage();
+  // Small batch with the same seed set so both policies face matched
+  // RNG streams — any wave delta is policy-driven, not luck-driven.
+  const greedyBatch = runBatch(() => new GreedyPolicy(), 12, { maxWaves: 15, seed: 2026 });
+  resetStorage();
+  const smartBatch = runBatch(() => new SmartPolicy(), 12, { maxWaves: 15, seed: 2026 });
+  const mean = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+  const greedyMean = mean(greedyBatch.map(s => s.summary.waveReached));
+  const smartMean = mean(smartBatch.map(s => s.summary.waveReached));
+  assert(smartMean > greedyMean,
+    `Smart integration: mean wave ${smartMean.toFixed(2)} > greedy ${greedyMean.toFixed(2)}`);
+}
+
 // --- POLICIES registry: can build each named policy ---
 {
   for (const name of Object.keys(POLICIES)) {
@@ -236,11 +386,12 @@ function resetStorage() {
 // --- Simulator honors maxWaves as a hard cap ---
 {
   resetStorage();
-  // Run a greedy sim with a very small maxWaves — player is unlikely to
-  // die before hitting the cap on wave 1 (1 caravan, 1 basic guard).
+  // Run a greedy sim with a small maxWaves — the player should finish
+  // wave 1 or die inside it, nothing higher.
   const sim = new Simulator(new GreedyPolicy(), { maxWaves: 1, commit: 'cap' });
   const session = sim.run();
-  assert(session.summary.waveReached <= 2, 'Simulator: waveReached bounded by cap+1');
+  assert(session.summary.waveReached === 1,
+    `Simulator: waveReached clamped to maxWaves (got ${session.summary.waveReached})`);
 }
 
 // --- Seeded reproducibility: same seed → identical summary ---
@@ -272,6 +423,17 @@ function resetStorage() {
   // durationMs comes from the logical clock, not wall clock.
   assert(a.summary.durationMs === b.summary.durationMs,
     `seed 42: durationMs matches (${a.summary.durationMs} vs ${b.summary.durationMs})`);
+
+  // Full event sequence must match too — a summary-only check misses RNG
+  // desyncs that happen to land on the same final totals. Compare only
+  // the deterministic fields (drop `t` which depends on step count but is
+  // carried through the logical clock anyway).
+  const eventFingerprint = s => s.events.map(e => {
+    const { t: _t, ...rest } = e;
+    return JSON.stringify(rest);
+  }).join('|');
+  assert(eventFingerprint(a) === eventFingerprint(b),
+    `seed 42: full event sequence matches (${a.events.length} vs ${b.events.length} events)`);
 }
 
 // --- Different seeds produce different runs (sanity) ---
@@ -363,6 +525,33 @@ function resetStorage() {
   assert(curve[0].medianDamageTaken === 10, `perWaveStats: wave 1 medianDamageTaken = 10 (got ${curve[0].medianDamageTaken})`);
 }
 
+// --- perWaveStats integration: real SessionLogger → perWaveStats ---
+// Exercises the logger event shape directly (not hand-built events) so a
+// schema drift between logger and aggregator is caught here.
+{
+  resetStorage();
+  const l = new SessionLogger({ commit: 'integration' });
+  l.startSession();
+  l.logWaveStart(1, {});
+  l.logGuardKilled('basic', 1);
+  l.logGuardKilled('basic', 1);
+  l.logWaveEnd(1, { durationMs: 3000, damageTaken: 20, caravansRobbed: 1 });
+  l.logFlawless(1, 100);
+  l.logWaveStart(2, {});
+  l.logGuardKilled('armored', 2);
+  l.logDeath(2, 500);
+  const finished = l.endSession({ died: true, finalScore: 500, waveReached: 2 });
+
+  const curve = perWaveStats([finished]);
+  assert(curve.length === 2, 'integration: 2 wave buckets');
+  assert(curve[0].reachedCount === 1 && curve[0].diedHere === 0, 'integration: wave 1 survived');
+  assert(curve[0].medianKills === 2, `integration: wave 1 kills=2 (got ${curve[0].medianKills})`);
+  assert(curve[0].medianDamageTaken === 20, 'integration: wave 1 damage=20');
+  assert(curve[0].flawlessCount === 1, 'integration: flawlessCount tracked');
+  assert(curve[1].reachedCount === 1 && curve[1].diedHere === 1, 'integration: wave 2 fatal');
+  assert(curve[1].mortalityPct === 100, 'integration: wave 2 mortality 100%');
+}
+
 // --- perWaveStats integration: real sim produces a monotone difficulty curve ---
 {
   resetStorage();
@@ -382,6 +571,82 @@ function resetStorage() {
   // the wave-curve output is empty of information.
   const anyDeaths = curve.some(c => c.diedHere > 0);
   assert(anyDeaths, 'perWaveStats(real): at least one death somewhere in the curve');
+}
+
+// --- comboScan: shape + sort order + reproducibility ---
+{
+  resetStorage();
+  // Tiny scan: 3 cards → 3 pairs, 4 sims per pair + 4 baseline = 16 sims.
+  // Kept small so the test runs in a few seconds.
+  const cards = ['damage', 'maxHp', 'speed'];
+  const result = comboScan(() => new GreedyPolicy(), {
+    count: 4,
+    maxWaves: 4,
+    cards,
+    seed: 77,
+    stackSize: 2,
+  });
+  assert(Array.isArray(result.pairs), 'comboScan: pairs array');
+  assert(result.pairs.length === 3, `comboScan: 3 pairs for 3 cards (got ${result.pairs.length})`);
+  assert(result.baseline.n === 4, 'comboScan: baseline n');
+  assert(typeof result.baseline.median === 'number', 'comboScan: baseline median');
+  assert(result.stackSize === 2, 'comboScan: stackSize echoed');
+  assert(result.cardIds.length === 3, 'comboScan: cardIds echoed');
+
+  // Pairs should be sorted descending by delta (median preferred, mean as
+  // tiebreak).
+  for (let i = 1; i < result.pairs.length; i++) {
+    const prev = result.pairs[i - 1];
+    const cur = result.pairs[i];
+    const ok = prev.delta > cur.delta || (prev.delta === cur.delta && prev.mean >= cur.mean);
+    assert(ok, `comboScan: pairs sorted by delta desc (${prev.delta} → ${cur.delta})`);
+  }
+
+  // Every pair has the two ids, plus stats fields.
+  for (const p of result.pairs) {
+    assert(typeof p.a === 'string' && typeof p.b === 'string', 'comboScan: pair ids');
+    assert(p.a !== p.b, 'comboScan: pair ids differ');
+    assert(typeof p.median === 'number', 'comboScan: pair median');
+    assert(typeof p.mean === 'number', 'comboScan: pair mean');
+    assert(p.n === 4, 'comboScan: pair n');
+    assert(p.delta === p.median - result.baseline.median, 'comboScan: delta = pairMed - baseMed');
+  }
+
+  // Same seed → same output (sanity check for reproducibility).
+  resetStorage();
+  const again = comboScan(() => new GreedyPolicy(), {
+    count: 4,
+    maxWaves: 4,
+    cards,
+    seed: 77,
+    stackSize: 2,
+  });
+  for (let i = 0; i < result.pairs.length; i++) {
+    assert(result.pairs[i].a === again.pairs[i].a, `comboScan reproducible: pair[${i}].a`);
+    assert(result.pairs[i].b === again.pairs[i].b, `comboScan reproducible: pair[${i}].b`);
+    assert(result.pairs[i].median === again.pairs[i].median, `comboScan reproducible: pair[${i}].median`);
+    assert(result.pairs[i].mean === again.pairs[i].mean, `comboScan reproducible: pair[${i}].mean`);
+  }
+  assert(result.baseline.median === again.baseline.median, 'comboScan reproducible: baseline median');
+}
+
+// --- comboScan: onProgress is called for each pair ---
+{
+  resetStorage();
+  let calls = 0;
+  let lastDone = 0;
+  let lastTotal = 0;
+  const result = comboScan(() => new GreedyPolicy(), {
+    count: 2,
+    maxWaves: 3,
+    cards: ['damage', 'maxHp', 'speed', 'cooldown'], // 6 pairs
+    seed: 11,
+    stackSize: 1,
+    onProgress: (done, total) => { calls++; lastDone = done; lastTotal = total; },
+  });
+  assert(calls === 6, `comboScan: onProgress called once per pair (got ${calls})`);
+  assert(lastDone === 6 && lastTotal === 6, 'comboScan: onProgress final tick is (N, N)');
+  assert(result.pairs.length === 6, 'comboScan: 6 pairs for 4 cards');
 }
 
 console.log(`Tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

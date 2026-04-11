@@ -16,9 +16,85 @@
 // would blow out storage. We only log state transitions and terminal
 // events (kills, picks, damage, death). Running counters in `summary`
 // give us aggregated metrics without storing per-tick detail.
+//
+// Constructor options:
+//   commit  - build commit string embedded in every session.
+//   clock   - optional () => number. When set, replaces Date.now() for
+//             event timestamps, _startMs, and durationMs. The simulator
+//             uses this to drive a logical (step-based) clock so two
+//             seeded runs produce byte-identical JSON.
+//
+// startSession(meta): if `meta.id` is present it replaces the generated
+// session id. The simulator uses this so a session's id is a
+// deterministic function of its seed, which in turn keeps the exported
+// JSON diffable across runs.
 
 const STORAGE_KEY = 'korovany.sessions';
 const MAX_SESSIONS = 100;
+
+// --- Telemetry upload ------------------------------------------------
+//
+// Sessions are POSTed to TELEMETRY_URL (public ngrok tunnel → local
+// scripts/telemetry-server.js on port 12000). Fire-and-forget: a failed
+// upload never blocks gameplay and never throws — the session is still
+// kept in localStorage as the primary store.
+//
+// Set TELEMETRY_URL to null to disable (headless/offline). Set
+// TELEMETRY_TOKEN if the server was started with TELEMETRY_TOKEN=...
+// Override at runtime from the browser console:
+//   window.KOROVANY_TELEMETRY_URL = 'http://localhost:12000/sessions'
+// (read lazily inside uploadSession so a console override takes effect
+// without reload).
+const TELEMETRY_URL = 'https://rapid-mayfly-intense.ngrok-free.app/sessions';
+const TELEMETRY_TOKEN = null;
+
+function resolveTelemetryUrl() {
+  if (typeof globalThis !== 'undefined' && globalThis.KOROVANY_TELEMETRY_URL !== undefined) {
+    return globalThis.KOROVANY_TELEMETRY_URL;
+  }
+  return TELEMETRY_URL;
+}
+
+// POST one session object to the telemetry server. Never throws, never
+// awaits — callers can ignore the returned promise.
+export function uploadSession(session) {
+  if (!session) return Promise.resolve(false);
+  // Only upload from real browser sessions — never from Node (tests,
+  // headless sim). Node 18+ has global fetch, so without this guard a
+  // test run would silently pollute the real telemetry sink.
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  const url = resolveTelemetryUrl();
+  if (!url) return Promise.resolve(false);
+  if (typeof fetch !== 'function') return Promise.resolve(false);
+  const headers = {
+    'Content-Type': 'application/json',
+    // ngrok-free serves an HTML interstitial to browsers on first hit;
+    // this header skips it. Harmless when the tunnel isn't ngrok.
+    'ngrok-skip-browser-warning': 'any',
+  };
+  if (TELEMETRY_TOKEN) headers['X-Telemetry-Token'] = TELEMETRY_TOKEN;
+  let body;
+  try {
+    body = JSON.stringify(session);
+  } catch (e) {
+    return Promise.resolve(false);
+  }
+  return fetch(url, { method: 'POST', headers, body, keepalive: true })
+    .then((r) => r && r.ok)
+    .catch(() => false);
+}
+
+// POST every session currently in localStorage. Used by the Shift+U
+// menu hotkey to backfill the server after offline play. Returns a
+// promise resolving to { sent, failed }.
+export function uploadAllLocal() {
+  const sessions = safeRead();
+  if (!sessions.length) return Promise.resolve({ sent: 0, failed: 0 });
+  return Promise.all(sessions.map(uploadSession)).then((results) => {
+    const sent = results.filter(Boolean).length;
+    return { sent, failed: results.length - sent };
+  });
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -130,7 +206,12 @@ export class SessionLogger {
   _log(type, data = {}) {
     if (!this.session) return;
     const t = this._nowMs() - this._startMs;
-    this.session.events.push({ t, type, ...data });
+    // Strip any `type` key from the payload so a future caller passing
+    // e.g. `{ type: 'basic' }` can't clobber the event's own discriminator.
+    // Previous bug: logGuardKilled / logCaravanRobbed spread `{ type, ... }`
+    // into this array and every kill event silently became `type: 'basic'`.
+    const { type: _ignored, ...safeData } = data;
+    this.session.events.push({ t, type, ...safeData });
   }
 
   // --- Event hooks (called from game.js) -------------------------------
@@ -177,7 +258,7 @@ export class SessionLogger {
     this._log('caravan_robbed', { caravanType: type, value, wave, boss: isBoss });
   }
 
-  logDamageDealt(amount, wave) {
+  logDamageDealt(amount) {
     if (!this.session) return;
     this.session.summary.damageDealt += amount;
     // Not stored as a per-hit event — too noisy. Only summary.
@@ -199,7 +280,7 @@ export class SessionLogger {
     this.session.summary.goldSpent += amount;
   }
 
-  logAttack(wave) {
+  logAttack() {
     if (!this.session) return;
     this.session.summary.attacks++;
   }
@@ -261,6 +342,10 @@ export class SessionLogger {
     sessions.push(finished);
     while (sessions.length > MAX_SESSIONS) sessions.shift();
     safeWrite(sessions);
+
+    // Fire-and-forget upload to the telemetry server. Swallows all
+    // errors internally; localStorage remains the source of truth.
+    uploadSession(finished);
 
     return finished;
   }

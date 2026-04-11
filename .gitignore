@@ -1,3 +1,6 @@
 
 # ralphex progress logs
 .ralphex/progress/
+
+# telemetry sink (scripts/telemetry-server.js writes here)
+telemetry/

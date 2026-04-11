@@ -15,6 +15,14 @@
 //
 // One Simulator instance runs one session and returns the finished
 // session object. Use runBatch() from run.js to run many in a row.
+//
+// Known divergence from the live game:
+// - No in-world paid shop. game.js lets the player walk up to a Shop and
+//   spend gold on cards mid-run; the sim never drives proximity into
+//   beginPaidDraft, so sessions only reflect the end-of-wave free draft.
+//   Builds that rely heavily on the paid shop will look weaker in sim
+//   results than they are in live play. Add a decidePaidShop hook if/when
+//   that matters.
 
 import { World } from '../world.js';
 import { Player } from '../player.js';
@@ -27,6 +35,15 @@ import { SessionLogger } from '../session-logger.js';
 import { CONST } from '../utils.js';
 import { makeRng } from '../rng.js';
 import { SimInput } from './sim-input.js';
+
+// Median of a numeric array. Returns null for empty input so callers can
+// decide how to render "no data" (the CLI prints a dash, JSON keeps null).
+function median(arr) {
+  if (arr.length === 0) return null;
+  const sorted = [...arr].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
 export class Simulator {
   constructor(policy, options = {}) {
@@ -137,7 +154,15 @@ export class Simulator {
 
     while (stepCount < this.maxSteps && wave <= this.maxWaves) {
       // --- Policy decision ----------------------------------------
-      const view = this._buildView(wave, player, caravans, guards, projectiles, loots, shop);
+      const view = {
+        wave,
+        player: this._playerView(player),
+        caravans,
+        guards,
+        projectiles,
+        loots,
+        shop,
+      };
       const action = this.policy.decidePlaying(view) || {};
       input.setMove(action.moveX || 0, action.moveY || 0);
 
@@ -154,7 +179,7 @@ export class Simulator {
 
       // --- Attack -------------------------------------------------
       if (action.attack && player.tryAttack()) {
-        logger.logAttack(wave);
+        logger.logAttack();
         const hits = performAttack(player, guards, caravans);
         if (player.lifestealPct > 0 && hits.length > 0) {
           const totalDmg = hits.reduce((s, h) => s + h.damage, 0);
@@ -162,7 +187,7 @@ export class Simulator {
           if (heal > 0) player.heal(heal);
         }
         for (const hit of hits) {
-          logger.logDamageDealt(hit.damage, wave);
+          logger.logDamageDealt(hit.damage);
           if (hit.type === 'guard' && !hit.target.alive) {
             logger.logGuardKilled(hit.target.type, wave);
             checkCaravanLoot(hit.target.caravan);
@@ -263,32 +288,44 @@ export class Simulator {
             caravansEscaped: escaped,
           });
 
-          // End-of-wave free draft.
+          // End-of-wave free draft. Policies may reroll before picking, so
+          // loop until they pick or skip. Cap iterations so a broken policy
+          // that keeps requesting rerolls can't burn infinite gold here.
           ui.beginFreeDraft(rng);
           logger.logShopOpened('wave', wave);
-          const shopView = {
-            wave,
-            mode: 'free',
-            offer: ui.draftOffer.slice(),
-            player: this._playerView(player),
-            gold: player.gold,
-            rng,
-          };
-          const decision = this.policy.decideShop(shopView) || { action: 'skip' };
+          const MAX_SHOP_DECISIONS = 8;
+          let closed = false;
+          for (let step = 0; step < MAX_SHOP_DECISIONS && !closed; step++) {
+            const shopView = {
+              wave,
+              mode: 'free',
+              offer: ui.draftOffer.slice(),
+              player: this._playerView(player),
+              gold: player.gold,
+              rng,
+            };
+            const decision = this.policy.decideShop(shopView) || { action: 'skip' };
 
-          if (decision.action === 'pick' && typeof decision.index === 'number') {
-            const card = ui.draftOffer[decision.index];
-            if (card && ui.pickCard(decision.index, player)) {
-              logger.logCardPicked(card.id, card.rarity, 'free', 0, wave);
-            }
-          } else if (decision.action === 'reroll') {
-            const cost = ui.getRerollCost();
-            if (ui.tryReroll(player, rng)) {
-              logger.logReroll('free', cost, wave);
-              logger.logGoldSpent(cost);
+            if (decision.action === 'pick' && typeof decision.index === 'number') {
+              const card = ui.draftOffer[decision.index];
+              if (card && ui.pickCard(decision.index, player)) {
+                logger.logCardPicked(card.id, card.rarity, 'free', 0, wave);
+              }
+              closed = true;
+            } else if (decision.action === 'reroll') {
+              const cost = ui.getRerollCost();
+              if (ui.tryReroll(player, rng)) {
+                logger.logReroll('free', cost, wave);
+                logger.logGoldSpent(cost);
+              } else {
+                // Can't afford to reroll — treat as skip so we don't loop.
+                closed = true;
+              }
+            } else {
+              // 'skip' or unknown action — done.
+              closed = true;
             }
           }
-          // 'skip' just closes without picking.
           logger.logShopClosed('wave', wave);
 
           // Move on.
@@ -305,31 +342,29 @@ export class Simulator {
 
     // --- Session terminator --------------------------------------
     const died = !player.alive;
-    if (died) logger.logDeath(wave, score);
+    // `wave` post-increments on wave completion, so a run that clears
+    // maxWaves exits with wave = maxWaves + 1 even though the player never
+    // entered that wave. Clamp for the summary so survival-to-cap reports
+    // the last wave actually played.
+    const reached = died ? wave : Math.min(wave, this.maxWaves);
+    // A run that burns through maxSteps without dying didn't really survive
+    // — the loop was cut short by the runaway safety ceiling. Flag it so
+    // summarizeBatch can split "legit survived" from "stalled out".
+    const timedOut = !died && stepCount >= this.maxSteps;
+    if (died) logger.logDeath(reached, score);
     const finished = logger.endSession({
       died,
+      timedOut,
       finalScore: score,
-      waveReached: wave,
+      waveReached: reached,
       totalSteps: stepCount,
     });
     return finished;
   }
 
-  // Build the read-only view handed to the policy each tick.
-  // Kept minimal — policies should not pull references out of entities,
-  // just read `pos`/`alive`/stats.
-  _buildView(wave, player, caravans, guards, projectiles, loots, shop) {
-    return {
-      wave,
-      player: this._playerView(player),
-      caravans,
-      guards,
-      projectiles,
-      loots,
-      shop,
-    };
-  }
-
+  // Build the player snapshot handed to the policy. Kept minimal —
+  // policies should not pull references out of entities, just read
+  // `pos`/`alive`/stats.
   _playerView(player) {
     return {
       pos: player.pos,
@@ -380,13 +415,12 @@ export function summarizeBatch(sessions) {
   const waves = sessions.map(s => s.summary.waveReached);
   const scores = sessions.map(s => s.summary.finalScore);
   const deaths = sessions.filter(s => s.summary.died).length;
+  const timedOut = sessions.filter(s => s.summary.timedOut).length;
+  // Survival rate counts only runs that actually reached the maxWaves cap
+  // alive — timeouts (runaway safety-ceiling exits) are a separate bucket
+  // so they don't silently inflate the success number.
+  const survived = n - deaths - timedOut;
   const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
-  const median = arr => {
-    if (arr.length === 0) return null;
-    const sorted = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  };
 
   // Most-picked card ids across the batch.
   const pickCounts = {};
@@ -399,7 +433,8 @@ export function summarizeBatch(sessions) {
   return {
     count: n,
     deaths,
-    survivalRate: (n - deaths) / n,
+    timedOut,
+    survivalRate: survived / n,
     waveReached: {
       min: Math.min(...waves),
       max: Math.max(...waves),
@@ -432,12 +467,6 @@ export function summarizeBatch(sessions) {
 // so the caller can filter them out — small splits are mostly noise.
 export function cardImpact(sessions) {
   if (sessions.length === 0) return [];
-  const median = arr => {
-    if (arr.length === 0) return null;
-    const sorted = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  };
 
   // Collect every card id seen anywhere in the batch.
   const cardIds = new Set();
@@ -478,6 +507,103 @@ export function cardImpact(sessions) {
   // Biggest positive wave delta first — OP candidates rise to the top.
   results.sort((a, b) => b.waveDelta - a.waveDelta);
   return results;
+}
+
+// Combo matrix scan — for every unordered pair of cards, pre-bake stacks of
+// both and run a batch. Returns pair deltas sorted by impact on median wave
+// so OP synergies (thorns+lifesteal, damage+wideArc, etc.) float to the top.
+//
+// Why it exists: manual hypothesis-testing ("I bet thorns is OP") doesn't
+// scale — last time thorns looked strong to the eye but data showed the
+// real winner was damage+lifesteal. Automating the pair sweep replaces
+// intuition with evidence.
+//
+// Method:
+//   1. Run `count` baseline sessions (no start cards) to anchor the delta.
+//   2. For every pair (a, b) from `cards`, run `count` sessions with
+//      start cards `[a×stackSize, b×stackSize]`.
+//   3. Compute median/mean wave per pair, delta = pairMedian - baseMedian.
+//   4. Sort by delta descending.
+//
+// Reproducibility: when `seed` is set, each pair uses `seed + (pairIdx+1)*10_000`
+// so different pairs explore different random sequences but the whole
+// scan is still byte-identical across reruns.
+//
+// Cost guardrail: with 12 cards and count=50, that's 66 pairs × 50 = 3300
+// sessions plus 50 baseline. On smart policy ≈ 0.1s/session, total ≈ 6min.
+// Drop `count` or trim `cards` to stay within a tight budget.
+export function comboScan(policyFactory, options = {}) {
+  const {
+    count = 50,
+    maxWaves = 30,
+    commit = 'sim',
+    seed = null,
+    cards = null, // null → every card in CARDS
+    stackSize = 3,
+    onProgress = null, // optional (doneCount, totalPairs) hook
+  } = options;
+
+  const cardIds = cards || CARDS.map(c => c.id);
+  // Enumerate unordered pairs.
+  const pairs = [];
+  for (let i = 0; i < cardIds.length; i++) {
+    for (let j = i + 1; j < cardIds.length; j++) {
+      pairs.push([cardIds[i], cardIds[j]]);
+    }
+  }
+
+  const t0 = Date.now();
+
+  // Baseline: no pre-baked cards. Seeded with the exact `seed` so reruns
+  // of the same scan compare against an identical anchor.
+  const baselineSessions = runBatch(policyFactory, count, {
+    maxWaves, commit, seed, startCards: [],
+  });
+  const baselineWaves = baselineSessions.map(s => s.summary.waveReached);
+  const baselineMedian = median(baselineWaves);
+  const baselineMean = baselineWaves.reduce((a, b) => a + b, 0) / Math.max(1, baselineWaves.length);
+
+  const results = [];
+  for (let pi = 0; pi < pairs.length; pi++) {
+    const [a, b] = pairs[pi];
+    const startCards = [];
+    for (let k = 0; k < stackSize; k++) startCards.push(a);
+    for (let k = 0; k < stackSize; k++) startCards.push(b);
+    // Stride the seed so different pairs aren't replaying the same RNG.
+    // +1 so pair 0 doesn't collide with the baseline seed.
+    const pairSeed = seed != null ? seed + (pi + 1) * 10_000 : null;
+    const sessions = runBatch(policyFactory, count, {
+      maxWaves, commit, seed: pairSeed, startCards,
+    });
+    const waves = sessions.map(s => s.summary.waveReached);
+    const med = median(waves);
+    const mean = waves.reduce((a, b) => a + b, 0) / Math.max(1, waves.length);
+    // Fraction of sessions in this pair that survived to maxWaves — extra
+    // confidence signal on top of the median, handy when two pairs tie.
+    const survival = sessions.filter(s => !s.summary.died && !s.summary.timedOut).length / sessions.length;
+    results.push({
+      a, b,
+      median: med,
+      mean,
+      survival,
+      n: sessions.length,
+      delta: med - baselineMedian,
+    });
+    if (onProgress) onProgress(pi + 1, pairs.length);
+  }
+
+  results.sort((x, y) => y.delta - x.delta || y.mean - x.mean);
+  return {
+    elapsedMs: Date.now() - t0,
+    baseline: {
+      median: baselineMedian,
+      mean: baselineMean,
+      n: baselineWaves.length,
+    },
+    pairs: results,
+    stackSize,
+    cardIds,
+  };
 }
 
 // Per-wave breakdown: "where does the difficulty wall sit and how steep is it?"
@@ -548,13 +674,6 @@ export function perWaveStats(sessions) {
       if (flawlessWaves.has(w)) acc.flawlessCount++;
     }
   }
-
-  const median = arr => {
-    if (arr.length === 0) return 0;
-    const sorted = [...arr].sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-  };
 
   const result = [];
   const sortedWaves = [...waves.keys()].sort((a, b) => a - b);

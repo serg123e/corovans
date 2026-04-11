@@ -18,25 +18,28 @@
 
 ---
 
-## 1. Smarter baseline policy
+## 1. Smarter baseline policy — ✓ done
 
 **Intent.** Текущий `GreedyPolicy` стабильно умирает на волне 4 (median=4, mean=4.3) — практически вся информация о late-game балансе теряется, потому что AI туда не доходит. Вся наша аналитика эффективно работает только для волн 1-5. Нужен baseline, который доживает до 10+ волн при разумной карточной удаче.
 
-**Approach.**
-- Kiting-поведение: если HP < 50% и рядом есть угроза, отступать перпендикулярно к ближайшей угрозе вместо stand-and-swing.
-- Уклонение от стрел: сканировать `view.projectiles`, если стрела летит в игрока ближе 80 px, дашиться в сторону перпендикулярно траектории.
-- Приоритеты целей по угрозе, а не по расстоянию: archer > armored > basic, учёт `hp * damage` как веса.
-- Стратегия по HP: выше 70% — агрессивно ломать корованы; 30-70% — нейтрально; <30% — кайтить, собирать лут.
-- Тип: `class SmartPolicy extends AIPolicy`, в POLICIES как `smart`.
+**What landed (SmartPolicy в `js/sim/policies.js`).**
+- **Arrow dodge.** Сканирует `view.projectiles`, берёт только те, что летят на игрока (dot > 0.7) и попадут раньше 0.45с — шаг перпендикулярно + dash если готов. Если в melee-досягаемости уже стоит цель, параллельно свингуем, чтобы одиночный лучник не обнулял DPS.
+- **Swarm retreat.** Двухтриггерное отступление: `HP < 30%`, ИЛИ `HP < 50% и ≥ 2 стражей в 90px`. Второе условие — главный выигрыш, оно вытаскивает нас до того, как кластер добьёт. Направление побега — взвешенный (1/dist) центроид всех стражей в aggroRange, чтобы не убегать в другого.
+- **Threat-weighted targeting.** Score = `damage * typeWeight * 100 / max(40, dist)`, typeWeight: archer 2.5, armored 1.5, basic 1. Distance floor 40 гарантирует что melee в упор побеждает дальнего лучника.
+- **Strafe-attack.** В полосе HP 30-70% против basic/armored — перпендикулярный шаг + attack, игрок может двигаться и бить на одном кадре, так что торговля дешевле.
+- **Card prefer.** `lifesteal, regen, maxHp, damage, thorns, dashCooldown, attackRange` — сначала sustain, потом offense.
 
-**Success criteria (как поймём что сделано).**
-- На `--policy smart --count 300 --max-waves 30` (без pre-bake): **median wave ≥ 10**, **survival rate ≥ 25%**.
-- Baseline greedy прежних параметров не регрессирует (median wave 4 ± 1).
-- Card impact таблица показывает ≥ 3 карт с `|Δwave| ≥ 2.0` и `n(with) ≥ 50` — то есть late-game карты перестают быть шумом.
+**Results (на коммите этой правки).**
+- `--policy smart --count 300 --max-waves 30`: median wave **11**, mean **11.6**, max **27**, deaths 105/300 (35%). ✓
+- `--policy greedy --count 300 --max-waves 20`: median **4**, mean **4.2** — не регрессировал. ✓
+- Card impact: ≥ 6 карт с `|Δwave| ≥ 2.0` и `n(with) ≥ 50` (speed +4, lifesteal +4, magnet +3, maxHp +3, wideArc +3, glassCannon +2). ✓
+- Wall сместилась с волны 4 (24% mortality на greedy) на волну 6 (10% mortality на smart), curve стала гораздо более гладкой — видно плавный спуск вместо скалы.
+
+**Known caveat.** `survival rate ≥ 25%` из исходного критерия не достигнут — 0% survivors на maxWaves=30 не потому что AI умирает, а потому что `maxSteps = 60*60*20` отсекает runs после ~20 минут игрового времени. На maxWaves=20 получаем survival ~6%. Если критерий важен — увеличить maxSteps или сделать его флагом CLI; это отдельная задача, не блок SmartPolicy.
 
 ---
 
-## 2. Seeded RNG
+## 2. Seeded RNG — ✓ done (47af009)
 
 **Intent.** Сейчас каждый прогон использует `Math.random()` глобально, и если симулятор показывает странный результат (например, один забег до волны 26 в thorns×3), воспроизвести его нельзя. Нужна детерминированная reproducibility: `--seed 42` всегда даёт те же события.
 
@@ -57,7 +60,7 @@
 
 ---
 
-## 3. Per-wave breakdown метрики
+## 3. Per-wave breakdown метрики — ✓ done (47af009)
 
 **Intent.** Сейчас summary агрегирует по всему забегу: «median wave 4, damage taken 180». Но это **суммы** и теряют форму кривой: где именно начинается death spike? Нужно видеть «выживаемость по волнам» чтобы ответить на вопрос «где стена сложности».
 
@@ -85,23 +88,22 @@
 
 ---
 
-## 4. Combo matrix
+## 4. Combo matrix — ✓ done
 
-**Intent.** Ручной thorns-test провалился — интуиция сказала «thorns OP», а данные показали `damage+lifesteal`. Ручное hypothesis-testing не масштабируется. Нужен автомат: перебор пар карт, сортировка по синергии.
+**What landed.** `comboScan()` в `js/sim/simulator.js` + флаги `--combo-scan`, `--combo-stack`, `--combo-cards`, `--combo-top` в run.js. Для каждой пары `(a, b)` запускает `count` сессий с pre-baked `[a×stack, b×stack]`, сравнивает median wave с baseline-батчем без стартовых карт. Seed-stride `+(pairIdx+1)*10_000` даёт полную воспроизводимость.
 
-**Approach.**
-- Только после #1 (smarter baseline) — на дохлых забегах пары не разойдутся.
-- Режим `--combo-scan`: для каждой пары `(a, b)` из CARDS запускать K забегов с `--start-cards a,a,a,b,b,b` и записывать median wave.
-- Сортировать по дельте относительно baseline без пары.
-- Объём: 12 карт → C(12,2) = 66 пар, по 50 забегов каждая = 3300 симов ≈ 30 сек на текущей скорости.
-- Вывод: таблица top-10 пар по `Δwave` с confidence (n, std).
-- Хранить в JSON-файле для последующего сравнения между коммитами.
+**Results (`--policy smart --combo-scan --count 20 --max-waves 20 --seed 42`).**
+- Baseline median 10 wave.
+- Top-5 (Δwave = +10 все): `attackRange+regen`, `magnet+regen`, `lifesteal+magnet`, `attackRange+lifesteal`, `attackRange+glassCannon`.
+- `attackRange` появляется в 5/15 топ-пар, `lifesteal` в 5/15, `regen` в 4/15 — доминирующие оси.
+- Bottom traps (`Δwave = 0`): `maxHp+speed`, `magnet+dashCooldown`, `speed+dashCooldown`, `speed+wideArc`, `cooldown+thorns`.
 
 **Success criteria.**
-- `--combo-scan --count 50 --max-waves 30` запускается за меньше 2 минут.
-- Top-1 пара имеет `Δwave ≥ 3` над baseline.
-- Можно повторить тест после балансной правки и увидеть, как пара сместилась в таблице.
-- Финальный маркер: запуск на текущем коммите показывает `damage+lifesteal` в top-3 (на основе того что мы увидели вручную в прошлой сессии).
+- ✓ Top-1 Δwave ≥ 3: получили +10.
+- ✓ Pairs отсортированы по дельте; JSON-экспорт работает.
+- ✓ Повторный запуск после правки покажет сдвиг (reproducible via seed).
+- ✗ `<2min` бюджет: 259s на `count=20`. Smart-политика дороже чем ожидалось (~120ms/sim). Выход: либо греди с `--max-waves 15` для быстрых итераций, либо `count=10` для быстрого превью.
+- ✗ `damage+lifesteal` в top-3: оказалось ложной гипотезой — данные показали, что `attackRange` и `regen` — реальные OP-оси. Это именно то, зачем существует combo-scan.
 
 ---
 
@@ -141,10 +143,10 @@
 
 Порядок основан на «что анблочит что»:
 
-1. **#2 Seeded RNG** — дёшево (один день), разблокирует debug. Делать первым.
-2. **#3 Per-wave breakdown** — дёшево, немедленно отдаёт сигнал о кривой сложности. Не блокирует ничего, можно параллельно с #1.
-3. **#1 Smarter baseline** — средняя сложность, нужен чтобы #4 имел смысл. Делать после #2 чтобы сразу видеть эффект новой policy на per-wave mortality.
-4. **#4 Combo matrix** — требует #1 для полезных результатов. Последним из «больших».
+1. **#2 Seeded RNG** — ✓ done.
+2. **#3 Per-wave breakdown** — ✓ done.
+3. **#1 Smarter baseline** — ✓ done. SmartPolicy достигает median 11, анблочит #4.
+4. **#4 Combo matrix** — next up. Теперь есть policy, на которой пары карт могут разойтись.
 5. **#5 Live ingestion** — nice-to-have, делать по запросу когда накопятся реальные логи.
 
 ---

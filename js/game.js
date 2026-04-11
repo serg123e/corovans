@@ -12,7 +12,7 @@ import { Shop } from './shop.js';
 import { spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, spawnSlash, spawnDashTrail, updateParticles, renderParticles } from './particles.js';
 import { GameAudio } from './audio.js';
 import { recordRun, getBestScore } from './storage.js';
-import { SessionLogger, clearAllSessions, countSessions } from './session-logger.js';
+import { SessionLogger, clearAllSessions, countSessions, uploadAllLocal } from './session-logger.js';
 
 // Game states
 export const State = {
@@ -298,6 +298,14 @@ export class Game {
       return;
     }
 
+    // Shift+U: backfill every session from localStorage to the
+    // telemetry server (for sessions collected while offline).
+    if (this.input.wasPressed('KeyU') && (this.input.keys['ShiftLeft'] || this.input.keys['ShiftRight'])) {
+      uploadAllLocal().then((r) => console.log(`[telemetry] backfill: sent=${r.sent} failed=${r.failed}`));
+      this.input.endFrame();
+      return;
+    }
+
     if (this.input.wasPressed('Space') || this.input.wasPressed('Enter') || this.input.mouse.clicked) {
       this.startGame();
       this.input.endFrame(); // consume input so it doesn't trigger attack on first frame
@@ -375,7 +383,7 @@ export class Game {
         }
         if (this.player.tryAttack()) {
           this.audio.playAttack();
-          this.logger.logAttack(this.wave);
+          this.logger.logAttack();
           spawnSlash(
             this.particles,
             this.player.pos.x,
@@ -404,7 +412,7 @@ export class Game {
               `-${hit.damage}`, '#fff', 16
             );
 
-            this.logger.logDamageDealt(hit.damage, this.wave);
+            this.logger.logDamageDealt(hit.damage);
 
             // Hit sparks and sound
             spawnHitSparks(this.particles, hit.target.pos.x, hit.target.pos.y);

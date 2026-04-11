@@ -23,11 +23,11 @@ js/
   shop.js           - In-world Shop building the player approaches with E to buy cards
   audio.js          - Web Audio API sound generation (no audio files), mute toggle
   storage.js        - localStorage wrapper: best score/wave, mute preference
-  session-logger.js - Per-session telemetry (events + summary) persisted to localStorage
+  session-logger.js - Per-session telemetry (events + summary) persisted to localStorage + auto-POST to telemetry server
   rng.js            - Seeded xorshift32 PRNG; used by the simulator for reproducible runs
   sim/
     sim-input.js      - Fake Input for headless sims (getMovement only)
-    policies.js       - AIPolicy base + GreedyPolicy / RandomCardPolicy / RunnerPolicy
+    policies.js       - AIPolicy base + GreedyPolicy / SmartPolicy / RandomCardPolicy / PreferencePolicy / RunnerPolicy
     simulator.js      - Headless Simulator: runs full sessions with an AIPolicy, no render/audio
     run.js            - Node CLI runner: batches of sims with aggregate summary + JSON export
   utils.js          - Vec2 class, collision helpers, math utilities, game constants (CONST)
@@ -44,6 +44,9 @@ tests/
   test-simulator.js      - Simulator + policies: SimInput, GreedyPolicy, runBatch, summarize
 scripts/
   update-version.sh      - Regenerate version.json with current git HEAD; run before playtests
+  telemetry-server.js    - Node stdlib HTTP sink for session uploads (POST /sessions → telemetry/sessions/<id>.json)
+telemetry/
+  sessions/              - Uploaded session JSONs (gitignored; one file per session id)
 version.json        - Build tag (commit sha) loaded at boot by main.js; embedded in logs
 ```
 
@@ -52,8 +55,12 @@ version.json        - Build tag (commit sha) loaded at boot by main.js; embedded
 - Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js && node tests/test-input.js && node tests/test-session-logger.js && node tests/test-simulator.js`
 - Play: open `index.html` in browser (no server needed, uses ES modules)
 - Update build tag before playtesting: `./scripts/update-version.sh` (or symlink to `.git/hooks/post-commit`)
-- Run headless AI batches: `node js/sim/run.js --policy greedy --count 50 --max-waves 20 [--seed 42] [--out sim.json]`
+- Run headless AI batches: `node js/sim/run.js --policy greedy --count 50 --max-waves 20 [--seed 42] [--start-cards id,id] [--out sim.json]`
   - Output includes per-wave mortality curve. Add `--seed N` for reproducible runs (same seed ⇒ byte-identical JSON except `startedAt`/`endedAt`/`exportedAt`).
+  - A/B compare: `node js/sim/run.js --policy preference --prefer thorns --compare "preference --avoid thorns"` runs a second batch and prints the delta. When `--seed` is set, the alt arm's seed is offset so the two batches aren't traversing identical random sequences.
+  - Policies: `greedy` (baseline, median wave ~4, dies fast), `smart` (baseline for late-game analysis, median wave ~11: arrow dodging, swarm retreat, threat-weighted targeting), `preference` (forced card build), `random-cards`, `runner`.
+  - Combo scan: `node js/sim/run.js --policy smart --combo-scan --count 20 --max-waves 20 [--combo-stack 3] [--combo-cards id,id] [--combo-top 15] [--out combo.json]` runs every unordered card pair with pre-baked stacks and prints Δwave vs baseline. At count=20/pair, default 12-card sweep = 1340 sims ≈ 4 minutes on smart.
+- Start telemetry sink: `node scripts/telemetry-server.js` (port 12000, writes to `telemetry/sessions/`). Expose via `ngrok http --url=rapid-mayfly-intense.ngrok-free.app 12000` — the client in `js/session-logger.js` POSTs finished sessions to that URL automatically. Menu hotkey Shift+U backfills all cached localStorage sessions.
 - No linter or formatter configured
 
 ## Conventions

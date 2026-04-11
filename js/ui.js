@@ -4,6 +4,7 @@
 import { CONST, pointInRect } from './utils.js';
 import { getBestScore, getBestWave } from './storage.js';
 import { countSessions } from './session-logger.js';
+import { randFn } from './rng.js';
 
 // Card rarities drive pool weighting and card border colors.
 const Rarity = {
@@ -164,7 +165,7 @@ function rollCard(exclude, ownedUnstackable, rng) {
   if (pool.length === 0) return null;
 
   const totalWeight = pool.reduce((s, c) => s + RARITY_WEIGHT[c.rarity], 0);
-  const rand = rng ? rng.next : Math.random;
+  const rand = randFn(rng);
   let roll = rand() * totalWeight;
   for (const card of pool) {
     roll -= RARITY_WEIGHT[card.rarity];

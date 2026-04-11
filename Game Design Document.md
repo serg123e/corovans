@@ -414,7 +414,17 @@ Free-режим игнорирует стоимость. Реролл работ
 - В главном меню показывается «Логов сессий: N».
 - **Клавиша `L`** — скачать все сессии JSON-файлом `korovany-sessions-<timestamp>.json`.
 - **`Shift+L`** — очистить все сохранённые сессии.
+- **`Shift+U`** — синхронизировать все сессии из localStorage на telemetry-сервер (бэкфилл после оффлайн-плейтеста).
 - Из devtools доступно как `window.__game.logger` — можно дергать `buildExportJson()`, `endSession()` и т.п.
+
+#### Онлайн-сборщик
+
+- `scripts/telemetry-server.js` — минимальный Node stdlib HTTP-сервер (порт 12000), принимает `POST /sessions` и пишет файлы в `telemetry/sessions/<id>.json` (идемпотентно по `id`).
+- Публикуется наружу через ngrok: `ngrok http --url=rapid-mayfly-intense.ngrok-free.app 12000`.
+- В `js/session-logger.js` константа `TELEMETRY_URL` указывает на ngrok-туннель. После `endSession()` клиент делает fire-and-forget `fetch` с `keepalive: true`. Ошибки глушатся — localStorage остаётся источником истины.
+- Аплоад выполняется **только из браузера** (`typeof window !== 'undefined'`), чтобы тесты и headless sim не засоряли сток.
+- Переопределение URL в рантайме: `window.KOROVANY_TELEMETRY_URL = 'http://localhost:12000/sessions'` (удобно для локального дебага).
+- Опциональная защита от случайного мусора из интернета: запуск сервера с `TELEMETRY_TOKEN=...`, тот же токен прописать в `TELEMETRY_TOKEN` в `session-logger.js`.
 
 ### 15a.3. Commit hash
 

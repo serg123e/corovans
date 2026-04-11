@@ -58,6 +58,20 @@ function resetStorage() {
   assert(l.session.summary.waveReached === 3, 'logWaveStart: waveReached tracks max');
 }
 
+// --- logWaveEnd records durationMs/damageTaken as event data ---
+{
+  resetStorage();
+  const l = new SessionLogger();
+  l.startSession();
+  l.logWaveStart(1, {});
+  l.logWaveEnd(1, { durationMs: 4200, damageTaken: 18, caravansRobbed: 2 });
+  assert(l.session.summary.wavesCompleted === 1, 'wavesCompleted tracks highest ended wave');
+  const ev = l.session.events.find(e => e.type === 'wave_end');
+  assert(ev && ev.wave === 1, 'wave_end event recorded');
+  assert(ev.durationMs === 4200, 'wave_end: durationMs carried through');
+  assert(ev.damageTaken === 18, 'wave_end: damageTaken carried through');
+}
+
 // --- logGuardKilled increments total and per-type ---
 {
   resetStorage();
@@ -71,6 +85,28 @@ function resetStorage() {
   assert(l.session.summary.guardsKilledByType.basic === 1, 'basic count');
   assert(l.session.summary.guardsKilledByType.armored === 2, 'armored count');
   assert(l.session.summary.guardsKilledByType.archer === 1, 'archer count');
+
+  // Regression: _log previously spread `{ type, ... }` into the event,
+  // which clobbered the event's own `type: 'guard_killed'` with the guard
+  // type string. Verify the event discriminator survives and the guard
+  // type is stored under `guardType`.
+  const kills = l.session.events.filter(e => e.type === 'guard_killed');
+  assert(kills.length === 4, `guard_killed events present (got ${kills.length})`);
+  assert(kills[0].guardType === 'basic', 'guard_killed: guardType preserved');
+  assert(kills[1].guardType === 'armored', 'guard_killed: guardType for armored');
+  const noClobber = l.session.events.filter(e => e.type === 'basic' || e.type === 'armored');
+  assert(noClobber.length === 0, 'guard_killed: event type not clobbered by guard type');
+}
+
+// --- logGuardKilled with source=thorns ---
+{
+  resetStorage();
+  const l = new SessionLogger();
+  l.startSession();
+  l.logGuardKilled('archer', 4, 'thorns');
+  assert(l.session.summary.guardsKilledBySource.thorns === 1, 'thorns source count');
+  const ev = l.session.events.find(e => e.type === 'guard_killed');
+  assert(ev && ev.source === 'thorns', 'guard_killed: source=thorns recorded on event');
 }
 
 // --- logCaravanRobbed and boss flag ---
@@ -84,6 +120,13 @@ function resetStorage() {
   assert(l.session.summary.caravansRobbedByType.donkey === 1, 'donkey count');
   assert(l.session.summary.caravansRobbedByType.royal === 1, 'royal count');
   assert(l.session.summary.bossesDefeated === 1, 'bossesDefeated tracked');
+
+  // Regression: same clobber bug as guard_killed — caravan_robbed events
+  // must not be hidden behind `type: 'donkey'` / `type: 'royal'`.
+  const robs = l.session.events.filter(e => e.type === 'caravan_robbed');
+  assert(robs.length === 2, `caravan_robbed events present (got ${robs.length})`);
+  assert(robs[0].caravanType === 'donkey', 'caravan_robbed: caravanType preserved');
+  assert(robs[1].boss === true, 'caravan_robbed: boss flag preserved');
 }
 
 // --- logDamageDealt / logPlayerDamaged ---

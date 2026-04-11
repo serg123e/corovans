@@ -8,6 +8,13 @@
 // Algorithm: xorshift32. Period ~4.2B, sufficient for balance experiments
 // where a single run uses at most ~1M rolls. NOT cryptographically secure.
 
+// Pick a 0..1 number source: the seeded rng's `next` when present,
+// Math.random otherwise. Saves repeating `rng ? rng.next : Math.random`
+// at every call-site that wants an optional seed.
+export function randFn(rng) {
+  return rng ? rng.next : Math.random;
+}
+
 export function makeRng(seed) {
   let state = (seed | 0) ^ 0xdeadbeef;
   if (state === 0) state = 0x1a2b3c4d;
