@@ -126,6 +126,7 @@ export class Player {
     this.dashCooldownTimer = 0;    // counts down until dash is ready again
     this.dashCooldownMax = CONST.PLAYER_DASH_COOLDOWN; // mutable via cards
     this.iframeTimer = 0;          // invulnerability window during dash
+    this.iframeBonus = 0;          // added to dash iframe window via cards
     this.dashDir = new Vec2(1, 0); // locked direction while dashing
 
     // Visual juice
@@ -218,7 +219,7 @@ export class Player {
     this.dashDir = new Vec2(dx, dy);
     this.facing = this.dashDir.copy();
     this.dashTimer = CONST.PLAYER_DASH_DURATION;
-    this.iframeTimer = CONST.PLAYER_DASH_IFRAME_DURATION;
+    this.iframeTimer = CONST.PLAYER_DASH_IFRAME_DURATION + this.iframeBonus;
     this.dashCooldownTimer = this.dashCooldownMax;
     return true;
   }

@@ -171,9 +171,11 @@ function assert(condition, message) {
   const player = new Player(100, 100);
   const card = CARDS.find(c => c.id === 'speed');
   ui.draftOffer = [card];
-  const orig = player.speed;
+  const origSpeed = player.speed;
+  const origCd = player.attackCooldown;
   ui.pickCard(0, player);
-  assert(player.speed === orig + 20, 'speed card: +20');
+  assert(player.speed === origSpeed + 15, 'speed card: +15 speed');
+  assert(Math.abs(player.attackCooldown - origCd * 0.94) < 0.0001, 'speed card: −6% attack cooldown');
 }
 
 // --- attackRange card ---
@@ -250,9 +252,11 @@ function assert(condition, message) {
   assert(!!card, 'dashCooldown card: exists in pool');
   ui.draftOffer = [card];
   const orig = player.dashCooldownMax;
+  const origIframe = player.iframeBonus;
   ui.pickCard(0, player);
   assert(player.dashCooldownMax < orig, 'dashCooldown card: reduces cooldown');
   assert(Math.abs(player.dashCooldownMax - orig * 0.75) < 0.0001, 'dashCooldown card: -25%');
+  assert(Math.abs(player.iframeBonus - (origIframe + 0.05)) < 0.0001, 'dashCooldown card: +0.05s iframe');
 }
 
 // --- glassCannon card ---

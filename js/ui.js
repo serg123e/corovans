@@ -58,11 +58,14 @@ export const CARDS = [
   {
     id: 'speed',
     label: 'Лёгкая походка',
-    desc: '+20 к скорости',
+    desc: '+15 к скорости, −6% к перезарядке атаки',
     icon: '👢',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.speed += 20; },
+    apply: (p) => {
+      p.speed += 15;
+      p.attackCooldown = Math.max(0.12, p.attackCooldown * 0.94);
+    },
   },
   {
     id: 'attackRange',
@@ -122,11 +125,14 @@ export const CARDS = [
   {
     id: 'dashCooldown',
     label: 'Быстрые ноги',
-    desc: '−25% к кулдауну рывка',
+    desc: '−25% к кулдауну рывка, +0.05с к окну неуязвимости',
     icon: '⚡',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.dashCooldownMax = Math.max(0.1, p.dashCooldownMax * 0.75); },
+    apply: (p) => {
+      p.dashCooldownMax = Math.max(0.1, p.dashCooldownMax * 0.75);
+      p.iframeBonus += 0.05;
+    },
   },
   // --- Rare cards ---
   {
