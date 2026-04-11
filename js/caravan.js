@@ -271,7 +271,7 @@ const ROYAL_SPRITE = [
 
 
 export class Guard {
-  constructor(x, y, caravan, type = GuardType.BASIC) {
+  constructor(x, y, caravan, type = GuardType.BASIC, rng = null) {
     this.pos = new Vec2(x, y);
     this.vel = new Vec2(0, 0);
     this.radius = CONST.GUARD_RADIUS;
@@ -314,9 +314,10 @@ export class Guard {
 
     // AI
     this.state = GuardState.PATROL;
+    const rand = rng ? rng.next : Math.random;
     this.patrolOffset = new Vec2(
-      (Math.random() - 0.5) * 40,
-      (Math.random() - 0.5) * 40
+      (rand() - 0.5) * 40,
+      (rand() - 0.5) * 40
     );
     this.alive = true;
 
@@ -532,7 +533,7 @@ export class Guard {
 
 
 export class Caravan {
-  constructor(type, world) {
+  constructor(type, world, rng = null) {
     const def = CARAVAN_DEFS[type];
     this.type = type;
     this.def = def;
@@ -553,8 +554,9 @@ export class Caravan {
     this.hp = this.maxHp;
     this.alive = true;
 
-    // Loot
-    this.lootValue = randInt(def.lootMin, def.lootMax);
+    // Loot (seeded when called from the sim so runs reproduce exactly)
+    const rand = rng ? rng.next : Math.random;
+    this.lootValue = Math.floor(def.lootMin + rand() * (def.lootMax - def.lootMin + 1));
 
     // Guards
     this.guards = [];
@@ -568,10 +570,11 @@ export class Caravan {
     this.flashTimer = 0;
   }
 
-  spawnGuards(wave = 1) {
+  spawnGuards(wave = 1, rng = null) {
     // Extra guards from wave scaling: +1 guard per 3 waves
     const extraGuards = Math.floor(wave / 3);
     const count = this.def.guardCount + extraGuards;
+    const rand = rng ? rng.next : Math.random;
 
     for (let i = 0; i < count; i++) {
       const angle = (Math.PI * 2 * i) / count;
@@ -583,7 +586,7 @@ export class Caravan {
       // Armored from wave 4+, archers from wave 6+
       let guardType = GuardType.BASIC;
       if (wave >= 4) {
-        const roll = Math.random();
+        const roll = rand();
         if (roll < 0.35) {
           guardType = GuardType.ARMORED;
         } else if (wave >= 6 && roll < 0.60) {
@@ -591,7 +594,7 @@ export class Caravan {
         }
       }
 
-      const guard = new Guard(gx, gy, this, guardType);
+      const guard = new Guard(gx, gy, this, guardType, rng);
       this.guards.push(guard);
     }
     return this.guards;
@@ -745,9 +748,10 @@ export function resolveGuardCollisions(guards, caravans) {
 }
 
 // Wave spawning system
-export function spawnWave(wave, world) {
+export function spawnWave(wave, world, rng = null) {
   const caravans = [];
   const isBossWave = wave > 0 && wave % 5 === 0;
+  const rand = rng ? rng.next : Math.random;
 
   // Scaling: more caravans as waves progress
   // Wave 1: 1, Wave 2: 1, Wave 3: 2, Wave 4: 2, Wave 5 (boss): 1 boss + 1 normal, etc.
@@ -755,7 +759,7 @@ export function spawnWave(wave, world) {
 
   if (isBossWave) {
     // Boss wave: spawn one boss caravan + fewer regular caravans
-    const bossCaravan = new Caravan(CaravanType.ROYAL, world);
+    const bossCaravan = new Caravan(CaravanType.ROYAL, world, rng);
     bossCaravan.isBoss = true;
     bossCaravan.maxHp = Math.round(bossCaravan.maxHp * CONST.BOSS_HP_MULTIPLIER);
     bossCaravan.hp = bossCaravan.maxHp;
@@ -782,15 +786,15 @@ export function spawnWave(wave, world) {
     if (wave <= 2) {
       type = CaravanType.DONKEY;
     } else if (wave <= 4) {
-      type = Math.random() < 0.6 ? CaravanType.DONKEY : CaravanType.WAGON;
+      type = rand() < 0.6 ? CaravanType.DONKEY : CaravanType.WAGON;
     } else {
-      const roll = Math.random();
+      const roll = rand();
       if (roll < 0.3) type = CaravanType.DONKEY;
       else if (roll < 0.7) type = CaravanType.WAGON;
       else type = CaravanType.ROYAL;
     }
 
-    const caravan = new Caravan(type, world);
+    const caravan = new Caravan(type, world, rng);
 
     // Stagger starting positions along the road
     caravan.pathT = 0.02 + ((startIdx + i) * 0.12);

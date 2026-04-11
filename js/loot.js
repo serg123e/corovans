@@ -1,25 +1,26 @@
 // Loot - gold coin entities that drop from defeated caravans and can be collected
 
-import { Vec2, CONST, randRange } from './utils.js';
+import { Vec2, CONST } from './utils.js';
 
 export class Loot {
-  constructor(x, y, value) {
+  constructor(x, y, value, rng = null) {
     this.pos = new Vec2(x, y);
     this.value = value;
     this.radius = CONST.LOOT_RADIUS;
     this.alive = true;
 
     // Scatter animation: coins fly out a bit when spawned
-    const angle = randRange(0, Math.PI * 2);
-    const speed = randRange(40, 100);
+    const rand = rng ? rng.next : Math.random;
+    const angle = rand() * Math.PI * 2;
+    const speed = 40 + rand() * 60;
     this.vel = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.friction = 5;
 
     // Visual bobbing
-    this.bobTimer = randRange(0, Math.PI * 2);
+    this.bobTimer = rand() * Math.PI * 2;
   }
 
-  update(dt, playerPos, worldWidth, worldHeight) {
+  update(dt, playerPos, worldWidth, worldHeight, magnetRangeMul = 1) {
     if (!this.alive) return;
 
     // Apply scatter velocity with friction
@@ -39,9 +40,10 @@ export class Loot {
     // Bob animation
     this.bobTimer += dt * 3;
 
-    // Magnet toward player when close
+    // Magnet toward player when close (range scaled by player upgrades)
     const distToPlayer = this.pos.dist(playerPos);
-    if (distToPlayer < CONST.LOOT_MAGNET_RANGE) {
+    const magnetRange = CONST.LOOT_MAGNET_RANGE * magnetRangeMul;
+    if (distToPlayer < magnetRange) {
       const dir = playerPos.sub(this.pos).normalize();
       this.pos = this.pos.add(dir.mul(CONST.LOOT_MAGNET_SPEED * dt));
     }
@@ -72,7 +74,7 @@ export class Loot {
 }
 
 // Spawn loot coins from a defeated caravan
-export function spawnLoot(caravan) {
+export function spawnLoot(caravan, rng = null) {
   const coins = [];
   const totalValue = caravan.lootValue;
 
@@ -86,7 +88,7 @@ export function spawnLoot(caravan) {
     const coinValue = isLast ? remaining : valuePerCoin;
     remaining -= coinValue;
 
-    const coin = new Loot(caravan.pos.x, caravan.pos.y, coinValue);
+    const coin = new Loot(caravan.pos.x, caravan.pos.y, coinValue, rng);
     coins.push(coin);
   }
 

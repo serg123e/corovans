@@ -1,6 +1,6 @@
-// Tests for UI class - shop logic, upgrades, and purchasing
+// Tests for UI class - draft card system, card pool, and picks
 
-import { UI, UPGRADES } from '../js/ui.js';
+import { UI, CARDS, DraftMode } from '../js/ui.js';
 import { Player } from '../js/player.js';
 import { CONST } from '../js/utils.js';
 
@@ -20,230 +20,342 @@ function assert(condition, message) {
 {
   const ui = new UI();
   assert(ui !== null, 'UI: creates successfully');
-  assert(Object.keys(ui.upgradeCounts).length === UPGRADES.length, 'UI: tracks all upgrade types');
-  for (const upg of UPGRADES) {
-    assert(ui.upgradeCounts[upg.id] === 0, `UI: ${upg.id} starts at 0 purchases`);
-  }
+  assert(Array.isArray(ui.draftOffer) && ui.draftOffer.length === 0, 'UI: draftOffer starts empty');
+  assert(ui.rerollCount === 0, 'UI: rerollCount starts at 0');
 }
 
 // --- UI reset ---
 {
   const ui = new UI();
-  ui.upgradeCounts['damage'] = 3;
-  ui.upgradeCounts['maxHp'] = 2;
+  ui.cardCounts['damage'] = 3;
+  ui.rerollCount = 5;
+  ui.draftOffer = [CARDS[0]];
   ui.reset();
-  assert(ui.upgradeCounts['damage'] === 0, 'UI reset: damage count resets to 0');
-  assert(ui.upgradeCounts['maxHp'] === 0, 'UI reset: maxHp count resets to 0');
+  assert(Object.keys(ui.cardCounts).length === 0, 'UI reset: cardCounts cleared');
+  assert(ui.rerollCount === 0, 'UI reset: rerollCount zeroed');
+  assert(ui.draftOffer.length === 0, 'UI reset: draftOffer cleared');
 }
 
-// --- Upgrade cost calculation ---
+// --- beginFreeDraft draws 5 distinct cards ---
 {
   const ui = new UI();
-  const dmgUpgrade = UPGRADES.find(u => u.id === 'damage');
-
-  // First purchase: base cost
-  const cost0 = ui.getUpgradeCost(dmgUpgrade);
-  assert(cost0 === dmgUpgrade.baseCost, 'getUpgradeCost: first purchase is base cost');
-
-  // After one purchase: base * scale
-  ui.upgradeCounts['damage'] = 1;
-  const cost1 = ui.getUpgradeCost(dmgUpgrade);
-  assert(cost1 === Math.floor(dmgUpgrade.baseCost * dmgUpgrade.costScale),
-    'getUpgradeCost: second purchase is base * scale');
-
-  // After two purchases: base * scale^2
-  ui.upgradeCounts['damage'] = 2;
-  const cost2 = ui.getUpgradeCost(dmgUpgrade);
-  assert(cost2 === Math.floor(dmgUpgrade.baseCost * Math.pow(dmgUpgrade.costScale, 2)),
-    'getUpgradeCost: third purchase is base * scale^2');
-}
-
-// --- Cost increases each upgrade type ---
-{
-  const ui = new UI();
-  for (const upg of UPGRADES) {
-    const costBefore = ui.getUpgradeCost(upg);
-    ui.upgradeCounts[upg.id] = 1;
-    const costAfter = ui.getUpgradeCost(upg);
-    assert(costAfter > costBefore, `getUpgradeCost: ${upg.id} cost increases after purchase`);
+  ui.beginFreeDraft();
+  assert(ui.draftOffer.length === 5, 'beginFreeDraft: draws 5 cards');
+  assert(ui.draftMode === DraftMode.FREE, 'beginFreeDraft: mode is FREE');
+  const ids = ui.draftOffer.map(c => c.id);
+  const unique = new Set(ids);
+  assert(unique.size === 5, 'beginFreeDraft: cards are distinct');
+  for (const card of ui.draftOffer) {
+    assert(typeof card.apply === 'function', `beginFreeDraft: ${card.id} has apply function`);
   }
 }
 
-// --- tryPurchase: successful purchase ---
+// --- beginPaidDraft: sets PAID mode and draws 5 cards on first call ---
+{
+  const ui = new UI();
+  ui.beginPaidDraft(1);
+  assert(ui.draftMode === DraftMode.PAID, 'beginPaidDraft: mode is PAID');
+  assert(ui.draftOffer.length === 5, 'beginPaidDraft: draws 5 cards');
+}
+
+// --- beginPaidDraft persists offer across calls within the same wave ---
+{
+  const ui = new UI();
+  ui.beginPaidDraft(3);
+  const firstIds = ui.draftOffer.map(c => c.id).join(',');
+  ui.beginPaidDraft(3);
+  const secondIds = ui.draftOffer.map(c => c.id).join(',');
+  assert(firstIds === secondIds, 'beginPaidDraft: same wave keeps offer');
+}
+
+// --- beginPaidDraft refreshes on new wave ---
+{
+  const ui = new UI();
+  ui.beginPaidDraft(1);
+  ui.onWaveStart();
+  ui.beginPaidDraft(2);
+  // Offer length should still be 5; we can't assert exact difference
+  // because random rolls may coincide, but onWaveStart() should have
+  // invalidated the cache so a re-roll happened.
+  assert(ui.draftOffer.length === 5, 'beginPaidDraft: 5 cards on new wave');
+  assert(ui._paidOfferWave === 2, 'beginPaidDraft: tracked wave updated');
+}
+
+// --- pickCard (free mode) applies effect and clears offer ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.FREE;
+  const player = new Player(100, 100);
+  const damageCard = CARDS.find(c => c.id === 'damage');
+  ui.draftOffer = [damageCard];
+  const origDamage = player.damage;
+
+  const result = ui.pickCard(0, player);
+  assert(result === true, 'pickCard(free): returns true on success');
+  assert(player.damage === origDamage + 5, 'pickCard(free): damage card applied');
+  assert(ui.draftOffer.length === 0, 'pickCard(free): offer cleared after pick');
+  assert(ui.cardCounts['damage'] === 1, 'pickCard(free): increments cardCounts');
+}
+
+// --- pickCard (paid mode) deducts gold and removes that card only ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.PAID;
+  const player = new Player(100, 100);
+  player.gold = 100;
+  const a = CARDS.find(c => c.id === 'damage');
+  const b = CARDS.find(c => c.id === 'speed');
+  ui.draftOffer = [a, b];
+  const cost = ui.getCardCost(a);
+
+  const ok = ui.pickCard(0, player);
+  assert(ok === true, 'pickCard(paid): succeeds with gold');
+  assert(player.gold === 100 - cost, 'pickCard(paid): gold deducted');
+  assert(ui.draftOffer.length === 1, 'pickCard(paid): only picked card removed');
+  assert(ui.draftOffer[0].id === 'speed', 'pickCard(paid): remaining card is correct');
+}
+
+// --- pickCard (paid mode) refuses when player lacks gold ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.PAID;
+  const player = new Player(100, 100);
+  player.gold = 0;
+  const card = CARDS.find(c => c.id === 'glassCannon'); // rare = most expensive
+  ui.draftOffer = [card];
+  const origDamage = player.damage;
+
+  const ok = ui.pickCard(0, player);
+  assert(ok === false, 'pickCard(paid): fails without gold');
+  assert(player.damage === origDamage, 'pickCard(paid): no effect applied on fail');
+  assert(player.gold === 0, 'pickCard(paid): no gold deducted on fail');
+  assert(ui.draftOffer.length === 1, 'pickCard(paid): offer untouched on fail');
+}
+
+// --- getCardCost returns the right price per rarity ---
+{
+  const ui = new UI();
+  const common = CARDS.find(c => c.rarity === 'common');
+  const uncommon = CARDS.find(c => c.rarity === 'uncommon');
+  const rare = CARDS.find(c => c.rarity === 'rare');
+  assert(ui.getCardCost(common) === 15, 'getCardCost: common = 15');
+  assert(ui.getCardCost(uncommon) === 40, 'getCardCost: uncommon = 40');
+  assert(ui.getCardCost(rare) === 80, 'getCardCost: rare = 80');
+}
+
+// --- pickCard invalid index ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  ui.draftOffer = [CARDS[0]];
+  assert(ui.pickCard(-1, player) === false, 'pickCard: false for negative index');
+  assert(ui.pickCard(99, player) === false, 'pickCard: false for out-of-range');
+}
+
+// --- maxHp card heals ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const hpCard = CARDS.find(c => c.id === 'maxHp');
+  ui.draftOffer = [hpCard];
+  const origHp = player.hp;
+  const origMax = player.maxHp;
+  ui.pickCard(0, player);
+  assert(player.maxHp === origMax + 25, 'maxHp card: maxHp increased');
+  assert(player.hp === origHp + 25, 'maxHp card: hp healed by same amount');
+}
+
+// --- speed card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'speed');
+  ui.draftOffer = [card];
+  const orig = player.speed;
+  ui.pickCard(0, player);
+  assert(player.speed === orig + 20, 'speed card: +20');
+}
+
+// --- attackRange card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'attackRange');
+  ui.draftOffer = [card];
+  const orig = player.attackRange;
+  ui.pickCard(0, player);
+  assert(player.attackRange === orig + 4, 'attackRange card: +4');
+}
+
+// --- cooldown card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'cooldown');
+  ui.draftOffer = [card];
+  const orig = player.attackCooldown;
+  ui.pickCard(0, player);
+  assert(player.attackCooldown < orig, 'cooldown card: reduces cooldown');
+  assert(player.attackCooldown >= 0.12, 'cooldown card: floored at 0.12');
+}
+
+// --- lifesteal card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'lifesteal');
+  ui.draftOffer = [card];
+  assert(player.lifestealPct === 0, 'lifesteal: starts at 0');
+  ui.pickCard(0, player);
+  assert(Math.abs(player.lifestealPct - 0.10) < 0.0001, 'lifesteal: +10%');
+}
+
+// --- thorns card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'thorns');
+  ui.draftOffer = [card];
+  ui.pickCard(0, player);
+  assert(Math.abs(player.thornsPct - 0.25) < 0.0001, 'thorns: +25%');
+}
+
+// --- magnet card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'magnet');
+  ui.draftOffer = [card];
+  assert(player.magnetRangeMul === 1, 'magnet: starts at 1');
+  ui.pickCard(0, player);
+  assert(Math.abs(player.magnetRangeMul - 1.5) < 0.0001, 'magnet: 1.5x');
+}
+
+// --- regen card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'regen');
+  ui.draftOffer = [card];
+  const orig = player.regenPerSec;
+  ui.pickCard(0, player);
+  assert(player.regenPerSec === orig + 2, 'regen: +2 per sec');
+}
+
+// --- dashCooldown card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'dashCooldown');
+  assert(!!card, 'dashCooldown card: exists in pool');
+  ui.draftOffer = [card];
+  const orig = player.dashCooldownMax;
+  ui.pickCard(0, player);
+  assert(player.dashCooldownMax < orig, 'dashCooldown card: reduces cooldown');
+  assert(Math.abs(player.dashCooldownMax - orig * 0.75) < 0.0001, 'dashCooldown card: -25%');
+}
+
+// --- glassCannon card ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'glassCannon');
+  ui.draftOffer = [card];
+  const origDmg = player.damage;
+  const origMax = player.maxHp;
+  ui.pickCard(0, player);
+  assert(player.damage === origDmg + 12, 'glassCannon: +12 damage');
+  assert(player.maxHp === origMax - 15, 'glassCannon: -15 maxHp');
+}
+
+// --- wideArc card is unstackable ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.FREE;
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'wideArc');
+  ui.draftOffer = [card];
+  assert(player.fullArcAttack === false, 'wideArc: starts disabled');
+  ui.pickCard(0, player);
+  assert(player.fullArcAttack === true, 'wideArc: enables full arc');
+  // Next draft shouldn't include wideArc since it was taken and is unstackable
+  for (let i = 0; i < 10; i++) {
+    ui.beginFreeDraft();
+    const hasWideArc = ui.draftOffer.some(c => c.id === 'wideArc');
+    assert(!hasWideArc, 'wideArc: excluded from future drafts once taken');
+  }
+}
+
+// --- reroll consumes gold ---
 {
   const ui = new UI();
   const player = new Player(100, 100);
   player.gold = 100;
-  const origDamage = player.damage;
-
-  const result = ui.tryPurchase(0, player); // damage upgrade
-  const dmgUpgrade = UPGRADES[0];
-  assert(result === true, 'tryPurchase: returns true on success');
-  assert(player.damage === origDamage + dmgUpgrade.amount, 'tryPurchase: applies damage upgrade');
-  assert(player.gold === 100 - dmgUpgrade.baseCost, 'tryPurchase: deducts gold');
-  assert(ui.upgradeCounts[dmgUpgrade.id] === 1, 'tryPurchase: increments purchase count');
+  ui.beginFreeDraft();
+  const cost = ui.getRerollCost();
+  assert(cost > 0, 'reroll: cost is positive');
+  const ok = ui.tryReroll(player);
+  assert(ok === true, 'reroll: succeeds with gold');
+  assert(player.gold === 100 - cost, 'reroll: gold deducted');
+  assert(ui.rerollCount === 1, 'reroll: count increments');
+  assert(ui.getRerollCost() > cost, 'reroll: cost grows after each reroll');
 }
 
-// --- tryPurchase: insufficient gold ---
+// --- reroll without gold fails ---
 {
   const ui = new UI();
   const player = new Player(100, 100);
-  player.gold = 1; // not enough for any upgrade
-  const origDamage = player.damage;
-
-  const result = ui.tryPurchase(0, player);
-  assert(result === false, 'tryPurchase: returns false when insufficient gold');
-  assert(player.damage === origDamage, 'tryPurchase: does not apply upgrade on failure');
-  assert(player.gold === 1, 'tryPurchase: does not deduct gold on failure');
+  player.gold = 0;
+  ui.beginFreeDraft();
+  const ok = ui.tryReroll(player);
+  assert(ok === false, 'reroll: fails without gold');
+  assert(player.gold === 0, 'reroll: no gold deducted on fail');
 }
 
-// --- tryPurchase: invalid index ---
+// --- handleDraftClick hit detection ---
 {
   const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 1000;
-
-  assert(ui.tryPurchase(-1, player) === false, 'tryPurchase: returns false for negative index');
-  assert(ui.tryPurchase(99, player) === false, 'tryPurchase: returns false for out-of-range index');
-}
-
-// --- tryPurchase: maxHp upgrade also heals ---
-{
-  const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 200;
-  const hpUpgrade = UPGRADES.findIndex(u => u.id === 'maxHp');
-  const origHp = player.hp;
-  const origMaxHp = player.maxHp;
-
-  ui.tryPurchase(hpUpgrade, player);
-  const hpAmount = UPGRADES[hpUpgrade].amount;
-  assert(player.maxHp === origMaxHp + hpAmount, 'tryPurchase: maxHp upgrade increases max HP');
-  assert(player.hp === origHp + hpAmount, 'tryPurchase: maxHp upgrade also heals');
-}
-
-// --- tryPurchase: speed upgrade ---
-{
-  const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 200;
-  const speedIdx = UPGRADES.findIndex(u => u.id === 'speed');
-  const origSpeed = player.speed;
-
-  ui.tryPurchase(speedIdx, player);
-  assert(player.speed === origSpeed + UPGRADES[speedIdx].amount, 'tryPurchase: speed upgrade applies');
-}
-
-// --- tryPurchase: attack range upgrade ---
-{
-  const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 200;
-  const rangeIdx = UPGRADES.findIndex(u => u.id === 'attackRange');
-  const origRange = player.attackRange;
-
-  ui.tryPurchase(rangeIdx, player);
-  assert(player.attackRange === origRange + UPGRADES[rangeIdx].amount, 'tryPurchase: attack range upgrade applies');
-}
-
-// --- Multiple purchases increase cost ---
-{
-  const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 10000;
-
-  const firstCost = UPGRADES[0].baseCost;
-  ui.tryPurchase(0, player);
-  const goldAfterFirst = player.gold;
-  assert(goldAfterFirst === 10000 - firstCost, 'Multiple purchases: first costs base amount');
-
-  const secondCost = ui.getUpgradeCost(UPGRADES[0]);
-  assert(secondCost > firstCost, 'Multiple purchases: second costs more than first');
-
-  ui.tryPurchase(0, player);
-  assert(player.gold === goldAfterFirst - secondCost, 'Multiple purchases: second deducts higher cost');
-}
-
-// --- handleShopClick: no buttons returns -1 ---
-{
-  const ui = new UI();
-  const result = ui.handleShopClick(100, 100);
-  assert(result === -1, 'handleShopClick: returns -1 when no buttons defined');
-}
-
-// --- handleShopClick: detects button click ---
-{
-  const ui = new UI();
-  ui._shopButtons = [
-    { x: 50, y: 50, w: 200, h: 60 },
-    { x: 50, y: 120, w: 200, h: 60 },
+  ui._cardButtons = [
+    { x: 50, y: 50, w: 200, h: 260 },
+    { x: 270, y: 50, w: 200, h: 260 },
   ];
-
-  assert(ui.handleShopClick(100, 70) === 0, 'handleShopClick: detects click on first button');
-  assert(ui.handleShopClick(100, 140) === 1, 'handleShopClick: detects click on second button');
-  assert(ui.handleShopClick(10, 10) === -1, 'handleShopClick: returns -1 for miss');
+  assert(ui.handleDraftClick(100, 100) === 0, 'handleDraftClick: first card');
+  assert(ui.handleDraftClick(300, 100) === 1, 'handleDraftClick: second card');
+  assert(ui.handleDraftClick(10, 10) === -1, 'handleDraftClick: miss');
 }
 
-// --- isNextWaveClicked ---
+// --- isRerollClicked / isSkipClicked ---
 {
   const ui = new UI();
-  ui._nextWaveButton = { x: 200, y: 400, w: 200, h: 45 };
-
-  assert(ui.isNextWaveClicked(300, 420) === true, 'isNextWaveClicked: detects click on button');
-  assert(ui.isNextWaveClicked(10, 10) === false, 'isNextWaveClicked: returns false for miss');
+  ui._rerollButton = { x: 100, y: 400, w: 180, h: 40 };
+  ui._skipButton = { x: 300, y: 400, w: 180, h: 40 };
+  assert(ui.isRerollClicked(150, 420) === true, 'isRerollClicked: hit');
+  assert(ui.isRerollClicked(350, 420) === false, 'isRerollClicked: miss');
+  assert(ui.isSkipClicked(350, 420) === true, 'isSkipClicked: hit');
+  assert(ui.isSkipClicked(10, 10) === false, 'isSkipClicked: miss');
 }
 
+// --- CARDS pool structure ---
 {
-  const ui = new UI();
-  assert(ui.isNextWaveClicked(300, 420) === false, 'isNextWaveClicked: returns false when no button');
-}
-
-// --- UPGRADES structure ---
-{
-  assert(UPGRADES.length === 4, 'UPGRADES: has 4 upgrade types');
-  const ids = UPGRADES.map(u => u.id);
-  assert(ids.includes('damage'), 'UPGRADES: includes damage');
-  assert(ids.includes('maxHp'), 'UPGRADES: includes maxHp');
-  assert(ids.includes('speed'), 'UPGRADES: includes speed');
-  assert(ids.includes('attackRange'), 'UPGRADES: includes attackRange');
-
-  for (const upg of UPGRADES) {
-    assert(upg.baseCost > 0, `UPGRADES: ${upg.id} has positive base cost`);
-    assert(upg.costScale > 1, `UPGRADES: ${upg.id} has cost scale > 1`);
-    assert(upg.amount > 0, `UPGRADES: ${upg.id} has positive amount`);
-    assert(typeof upg.label === 'string' && upg.label.length > 0, `UPGRADES: ${upg.id} has label`);
-    assert(typeof upg.desc === 'string' && upg.desc.length > 0, `UPGRADES: ${upg.id} has description`);
-    assert(typeof upg.stat === 'string', `UPGRADES: ${upg.id} has stat field`);
+  assert(CARDS.length >= 8, 'CARDS: pool has at least 8 cards');
+  for (const card of CARDS) {
+    assert(typeof card.id === 'string', `CARDS: ${card.id} has id`);
+    assert(typeof card.label === 'string' && card.label.length > 0, `CARDS: ${card.id} has label`);
+    assert(typeof card.desc === 'string' && card.desc.length > 0, `CARDS: ${card.id} has desc`);
+    assert(typeof card.apply === 'function', `CARDS: ${card.id} has apply function`);
+    assert(typeof card.rarity === 'string', `CARDS: ${card.id} has rarity`);
+    assert(typeof card.stackable === 'boolean', `CARDS: ${card.id} has stackable flag`);
   }
 }
 
-// --- All upgrade stats map to actual player properties ---
+// --- Player has new modifier fields ---
 {
   const player = new Player(100, 100);
-  for (const upg of UPGRADES) {
-    assert(upg.stat in player, `UPGRADES: ${upg.id} stat '${upg.stat}' exists on Player`);
-  }
-}
-
-// --- Buying all upgrades once ---
-{
-  const ui = new UI();
-  const player = new Player(100, 100);
-  player.gold = 10000;
-
-  for (let i = 0; i < UPGRADES.length; i++) {
-    const result = ui.tryPurchase(i, player);
-    assert(result === true, `Buying all: purchase ${UPGRADES[i].id} succeeds`);
-  }
-
-  assert(player.damage === CONST.PLAYER_BASE_DAMAGE + UPGRADES.find(u => u.id === 'damage').amount,
-    'Buying all: damage upgraded');
-  assert(player.maxHp === CONST.PLAYER_MAX_HP + UPGRADES.find(u => u.id === 'maxHp').amount,
-    'Buying all: maxHp upgraded');
-  assert(player.speed === CONST.PLAYER_SPEED + UPGRADES.find(u => u.id === 'speed').amount,
-    'Buying all: speed upgraded');
-  assert(player.attackRange === CONST.PLAYER_ATTACK_RANGE + UPGRADES.find(u => u.id === 'attackRange').amount,
-    'Buying all: attackRange upgraded');
+  assert(player.lifestealPct === 0, 'Player: lifestealPct default 0');
+  assert(player.thornsPct === 0, 'Player: thornsPct default 0');
+  assert(player.magnetRangeMul === 1, 'Player: magnetRangeMul default 1');
+  assert(player.fullArcAttack === false, 'Player: fullArcAttack default false');
+  assert(player.regenPerSec === CONST.PLAYER_HP_REGEN_PER_SEC, 'Player: regenPerSec default');
 }
 
 console.log(`Tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);

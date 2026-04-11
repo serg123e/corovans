@@ -91,6 +91,13 @@ export class Player {
     this.speed = CONST.PLAYER_SPEED;
     this.attackRange = CONST.PLAYER_ATTACK_RANGE;
     this.attackCooldown = CONST.PLAYER_ATTACK_COOLDOWN;
+    this.regenPerSec = CONST.PLAYER_HP_REGEN_PER_SEC;
+
+    // Card-driven modifiers
+    this.lifestealPct = 0;   // 0..1, heal % of dealt damage
+    this.thornsPct = 0;      // 0..1, reflect % of incoming melee damage
+    this.magnetRangeMul = 1; // 1 = default, cards scale up
+    this.fullArcAttack = false; // true = attack hits in full 360° arc
 
     // Resources
     this.gold = 0;
@@ -114,6 +121,13 @@ export class Player {
     this.attackAnimTimer = 0;
     this.attackAnimDuration = 0.2; // seconds the attack anim plays
 
+    // Dash state
+    this.dashTimer = 0;            // counts down while dash is active
+    this.dashCooldownTimer = 0;    // counts down until dash is ready again
+    this.dashCooldownMax = CONST.PLAYER_DASH_COOLDOWN; // mutable via cards
+    this.iframeTimer = 0;          // invulnerability window during dash
+    this.dashDir = new Vec2(1, 0); // locked direction while dashing
+
     // Visual juice
     this.flashTimer = 0; // flash white on damage
     this.squashX = 1;    // squash/stretch scale
@@ -123,28 +137,37 @@ export class Player {
   update(dt, input, worldW, worldH) {
     if (!this.alive) return;
 
-    // Get movement input
-    const move = input.getMovement();
-    const moveVec = new Vec2(move.x, move.y);
+    // Tick dash timers first — dash state overrides normal movement.
+    if (this.dashCooldownTimer > 0) this.dashCooldownTimer -= dt;
+    if (this.dashTimer > 0) this.dashTimer -= dt;
+    if (this.iframeTimer > 0) this.iframeTimer -= dt;
 
-    // Apply acceleration toward desired direction
-    if (moveVec.lenSq() > 0) {
-      const accelVec = moveVec.mul(this.accel * dt);
-      this.vel = this.vel.add(accelVec);
-      // Clamp to max speed
-      this.vel = this.vel.clampLen(this.speed);
-      // Update facing direction
-      this.facing = moveVec.normalize();
-    }
+    const isDashing = this.dashTimer > 0;
 
-    // Apply friction
-    const frictionMul = Math.exp(-this.friction * dt);
-    this.vel = this.vel.mul(frictionMul);
+    if (isDashing) {
+      // Lock velocity and facing to the dash direction. Ignore input so the
+      // dash can't be "cancelled" mid-air by WASD.
+      this.vel = this.dashDir.mul(CONST.PLAYER_DASH_SPEED);
+      this.facing = this.dashDir.copy();
+    } else {
+      // Normal acceleration/friction movement.
+      const move = input.getMovement();
+      const moveVec = new Vec2(move.x, move.y);
 
-    // Stop if nearly still
-    if (this.vel.lenSq() < 1) {
-      this.vel.x = 0;
-      this.vel.y = 0;
+      if (moveVec.lenSq() > 0) {
+        const accelVec = moveVec.mul(this.accel * dt);
+        this.vel = this.vel.add(accelVec);
+        this.vel = this.vel.clampLen(this.speed);
+        this.facing = moveVec.normalize();
+      }
+
+      const frictionMul = Math.exp(-this.friction * dt);
+      this.vel = this.vel.mul(frictionMul);
+
+      if (this.vel.lenSq() < 1) {
+        this.vel.x = 0;
+        this.vel.y = 0;
+      }
     }
 
     // Update position
@@ -162,7 +185,7 @@ export class Player {
     // Passive health regeneration. HP is displayed as an integer, so we
     // accumulate fractional regen and apply it one whole point at a time.
     if (this.hp < this.maxHp) {
-      this.regenAccum += CONST.PLAYER_HP_REGEN_PER_SEC * dt;
+      this.regenAccum += this.regenPerSec * dt;
       if (this.regenAccum >= 1) {
         const whole = Math.floor(this.regenAccum);
         this.hp = Math.min(this.maxHp, this.hp + whole);
@@ -174,6 +197,30 @@ export class Player {
 
     // Update animation
     this._updateAnimation(dt);
+  }
+
+  // Try to start a dash in the given direction. If the input vector is zero,
+  // falls back to the current facing direction so a stationary player can
+  // still dash forward. Returns true if the dash was started.
+  startDash(dirX = 0, dirY = 0) {
+    if (!this.alive) return false;
+    if (this.dashCooldownTimer > 0 || this.dashTimer > 0) return false;
+
+    const len = Math.sqrt(dirX * dirX + dirY * dirY);
+    let dx, dy;
+    if (len > 0.001) {
+      dx = dirX / len;
+      dy = dirY / len;
+    } else {
+      dx = this.facing.x;
+      dy = this.facing.y;
+    }
+    this.dashDir = new Vec2(dx, dy);
+    this.facing = this.dashDir.copy();
+    this.dashTimer = CONST.PLAYER_DASH_DURATION;
+    this.iframeTimer = CONST.PLAYER_DASH_IFRAME_DURATION;
+    this.dashCooldownTimer = this.dashCooldownMax;
+    return true;
   }
 
   // Try to start an attack. Returns true if attack was initiated.
@@ -253,6 +300,10 @@ export class Player {
       renderer.translate(-x, -y);
     }
 
+    // Lower opacity while invulnerable to telegraph i-frames.
+    const iframes = this.iframeTimer > 0;
+    if (iframes) renderer.setAlpha(0.55);
+
     // Flash white on damage
     if (this.flashTimer > 0) {
       const flashPalette = {};
@@ -263,6 +314,8 @@ export class Player {
     } else {
       renderer.pixelSprite(x, y, drawSprite, SPRITE_PALETTE, 2);
     }
+
+    if (iframes) renderer.resetAlpha();
 
     if (needsTransform) {
       renderer.restore();
@@ -294,6 +347,8 @@ export class Player {
 
   takeDamage(amount) {
     if (!this.alive) return;
+    // Dash i-frames: completely ignore incoming damage.
+    if (this.iframeTimer > 0) return;
     this.hp -= amount;
     // Squash on hit
     this.squashX = 0.7;
@@ -322,8 +377,29 @@ export class Player {
     this.alive = true;
     this.attackTimer = 0;
     this.regenAccum = 0;
+    this.dashTimer = 0;
+    this.dashCooldownTimer = 0;
+    this.iframeTimer = 0;
     this.anim = Anim.IDLE;
     this.animTimer = 0;
     this.animFrame = 0;
+  }
+
+  // Move the player to a new spot between waves without touching HP, stats,
+  // or upgrades. Clears motion / dash state so the spawn is clean.
+  respawnAt(x, y) {
+    this.pos.set(x, y);
+    this.vel.set(0, 0);
+    this.attackTimer = 0;
+    this.dashTimer = 0;
+    this.dashCooldownTimer = 0;
+    this.iframeTimer = 0;
+    this.anim = Anim.IDLE;
+    this.animTimer = 0;
+    this.animFrame = 0;
+    this.isAttacking = false;
+    this.attackAnimTimer = 0;
+    this.squashX = 1;
+    this.squashY = 1;
   }
 }

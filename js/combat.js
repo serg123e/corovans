@@ -60,12 +60,17 @@ export function calcDamage(baseDamage, armor = 0) {
 export function findAttackTargets(attacker, targets, attackRange) {
   const hits = [];
   const attackReach = attackRange + attacker.radius;
+  const fullArc = !!attacker.fullArcAttack;
 
   for (const target of targets) {
     if (!target.alive) continue;
 
     const dist = attacker.pos.dist(target.pos);
     if (dist < attackReach + target.radius) {
+      if (fullArc) {
+        hits.push(target);
+        continue;
+      }
       // Check that target is roughly in front of the attacker (180 degree arc)
       const toTarget = target.pos.sub(attacker.pos);
       const dot = toTarget.normalize().dot(attacker.facing);

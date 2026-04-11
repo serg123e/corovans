@@ -41,6 +41,23 @@ export class Particle {
   }
 }
 
+// Dash trail: a short streak of bright particles behind the dashing player.
+export function spawnDashTrail(particles, x, y, dirX, dirY) {
+  const count = 3 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < count; i++) {
+    // Spawn slightly behind the player along the dash direction.
+    const back = 4 + Math.random() * 8;
+    const px = x - dirX * back + randRange(-3, 3);
+    const py = y - dirY * back + randRange(-3, 3);
+    // Small residual drift opposite to dash direction.
+    const vx = -dirX * randRange(10, 30) + randRange(-8, 8);
+    const vy = -dirY * randRange(10, 30) + randRange(-8, 8);
+    const color = Math.random() < 0.5 ? '#ffffff' : '#ffeeaa';
+    const life = randRange(0.15, 0.3);
+    particles.push(new Particle(px, py, vx, vy, color, life, randRange(2, 4)));
+  }
+}
+
 // Spawn dust particles behind a moving entity
 export function spawnDust(particles, x, y, velX, velY) {
   const count = 1 + Math.floor(Math.random() * 2);

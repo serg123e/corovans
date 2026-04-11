@@ -291,5 +291,133 @@ function mockInput(mx = 0, my = 0) {
   assert(p.attackTimer < 0.5, 'Attack timer decreases');
 }
 
+// --- Dash initial state ---
+{
+  const p = new Player(100, 100);
+  assert(p.dashTimer === 0, 'Dash: starts with 0 dashTimer');
+  assert(p.dashCooldownTimer === 0, 'Dash: starts with 0 dashCooldownTimer');
+  assert(p.iframeTimer === 0, 'Dash: starts with 0 iframeTimer');
+  assert(p.dashCooldownMax === CONST.PLAYER_DASH_COOLDOWN, 'Dash: dashCooldownMax equals constant');
+}
+
+// --- startDash sets timers and direction ---
+{
+  const p = new Player(500, 500);
+  const ok = p.startDash(1, 0);
+  assert(ok === true, 'startDash: succeeds when ready');
+  assert(p.dashTimer > 0, 'startDash: dashTimer set');
+  assert(p.iframeTimer > 0, 'startDash: iframeTimer set');
+  assert(p.dashCooldownTimer > 0, 'startDash: cooldown set');
+  assertApprox(p.dashDir.x, 1, 'startDash: direction set (x)');
+  assertApprox(p.dashDir.y, 0, 'startDash: direction set (y)');
+}
+
+// --- startDash normalizes the direction vector ---
+{
+  const p = new Player(500, 500);
+  p.startDash(3, 4); // length 5
+  assertApprox(p.dashDir.x, 0.6, 'startDash: normalizes x', 0.01);
+  assertApprox(p.dashDir.y, 0.8, 'startDash: normalizes y', 0.01);
+}
+
+// --- startDash falls back to facing when given zero vector ---
+{
+  const p = new Player(500, 500);
+  p.facing = new Vec2(0, -1);
+  p.startDash(0, 0);
+  assertApprox(p.dashDir.x, 0, 'startDash: fallback uses facing x');
+  assertApprox(p.dashDir.y, -1, 'startDash: fallback uses facing y');
+}
+
+// --- startDash fails during cooldown ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  const ok = p.startDash(0, 1);
+  assert(ok === false, 'startDash: fails when still on cooldown');
+}
+
+// --- startDash fails when dead ---
+{
+  const p = new Player(500, 500);
+  p.alive = false;
+  const ok = p.startDash(1, 0);
+  assert(ok === false, 'startDash: fails when dead');
+}
+
+// --- Dash moves the player fast ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  const startX = p.pos.x;
+  // Run for the full dash duration
+  const steps = Math.ceil(CONST.PLAYER_DASH_DURATION * 60);
+  for (let i = 0; i < steps; i++) {
+    p.update(1 / 60, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  const traveled = p.pos.x - startX;
+  // Should have covered at least 60% of dashSpeed * duration (friction-free).
+  const expected = CONST.PLAYER_DASH_SPEED * CONST.PLAYER_DASH_DURATION;
+  assert(traveled > expected * 0.6, `Dash: player traveled ~${traveled.toFixed(0)} (expected ~${expected.toFixed(0)})`);
+}
+
+// --- Dash input cannot steer the dash mid-air ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  // Try to redirect with input
+  for (let i = 0; i < 5; i++) {
+    p.update(1 / 60, mockInput(0, 1), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assertApprox(p.dashDir.x, 1, 'Dash: direction stays locked during dash');
+  assertApprox(p.dashDir.y, 0, 'Dash: direction stays locked during dash');
+}
+
+// --- i-frames ignore damage ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  assert(p.iframeTimer > 0, 'iframes active after dash');
+  const hpBefore = p.hp;
+  p.takeDamage(30);
+  assert(p.hp === hpBefore, 'takeDamage: ignored during i-frames');
+}
+
+// --- takeDamage works again after i-frames expire ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  // Advance past i-frame duration
+  const steps = Math.ceil((CONST.PLAYER_DASH_IFRAME_DURATION + 0.05) * 60);
+  for (let i = 0; i < steps; i++) {
+    p.update(1 / 60, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assert(p.iframeTimer <= 0, 'iframes expired');
+  p.takeDamage(10);
+  assert(p.hp === CONST.PLAYER_MAX_HP - 10, 'takeDamage: works after i-frames');
+}
+
+// --- Dash cooldown eventually clears ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  const steps = Math.ceil((CONST.PLAYER_DASH_COOLDOWN + 0.1) * 60);
+  for (let i = 0; i < steps; i++) {
+    p.update(1 / 60, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assert(p.dashCooldownTimer <= 0, 'dashCooldownTimer drained');
+  assert(p.startDash(1, 0) === true, 'can dash again after cooldown');
+}
+
+// --- reset clears dash state ---
+{
+  const p = new Player(500, 500);
+  p.startDash(1, 0);
+  p.reset(100, 100);
+  assert(p.dashTimer === 0, 'reset: dashTimer cleared');
+  assert(p.dashCooldownTimer === 0, 'reset: dashCooldownTimer cleared');
+  assert(p.iframeTimer === 0, 'reset: iframeTimer cleared');
+}
+
 console.log(`Tests: ${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);

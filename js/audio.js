@@ -1,5 +1,9 @@
 // Audio - Web Audio API sound generation (no audio files needed)
 
+import { getMuted, setMuted } from './storage.js';
+
+const MASTER_VOLUME = 0.3;
+
 export class GameAudio {
   constructor() {
     this.ctx = null;
@@ -7,6 +11,7 @@ export class GameAudio {
     this._initialized = false;
     this._windNode = null;
     this._windGain = null;
+    this.muted = getMuted();
   }
 
   // Must be called from a user gesture (click/keypress)
@@ -15,12 +20,21 @@ export class GameAudio {
     try {
       this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.value = 0.3;
+      this.masterGain.gain.value = this.muted ? 0 : MASTER_VOLUME;
       this.masterGain.connect(this.ctx.destination);
       this._initialized = true;
     } catch (e) {
       // Audio not available - silently degrade
     }
+  }
+
+  toggleMute() {
+    this.muted = !this.muted;
+    setMuted(this.muted);
+    if (this.masterGain) {
+      this.masterGain.gain.value = this.muted ? 0 : MASTER_VOLUME;
+    }
+    return this.muted;
   }
 
   _ensureCtx() {
@@ -99,6 +113,23 @@ export class GameAudio {
     gain.connect(this.masterGain);
     osc.start(t);
     osc.stop(t + 0.35);
+  }
+
+  // Dash whoosh - quick rising sine sweep
+  playDash() {
+    if (!this._ensureCtx()) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(320, t);
+    osc.frequency.exponentialRampToValueAtTime(120, t + 0.14);
+    gain.gain.setValueAtTime(0.12, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.16);
   }
 
   // Player hurt - short distorted noise

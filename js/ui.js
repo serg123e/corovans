@@ -1,103 +1,318 @@
-// UI - HUD, menus, and shop
-// Manages all user interface screens: main menu, in-game HUD, shop, game over
+// UI - HUD, menus, draft shop, and game over
+// Manages all user interface screens: main menu, in-game HUD, draft card pick, game over.
 
 import { CONST, pointInRect } from './utils.js';
+import { getBestScore, getBestWave } from './storage.js';
+import { countSessions } from './session-logger.js';
 
-// Upgrade definitions
-const UPGRADES = [
+// Card rarities drive pool weighting and card border colors.
+const Rarity = {
+  COMMON: 'common',
+  UNCOMMON: 'uncommon',
+  RARE: 'rare',
+};
+
+const RARITY_WEIGHT = {
+  [Rarity.COMMON]: 60,
+  [Rarity.UNCOMMON]: 30,
+  [Rarity.RARE]: 10,
+};
+
+const RARITY_COLOR = {
+  [Rarity.COMMON]: '#8aa3a8',
+  [Rarity.UNCOMMON]: '#4a90e2',
+  [Rarity.RARE]: '#e2b44a',
+};
+
+// Gold cost per rarity when purchased from the in-world shop (paid mode).
+// Free mode (end-of-wave draft) ignores these.
+const RARITY_COST = {
+  [Rarity.COMMON]: 15,
+  [Rarity.UNCOMMON]: 40,
+  [Rarity.RARE]: 80,
+};
+
+// Card pool. Each card has an apply(player) that mutates player stats.
+// `stackable: false` cards drop out of the pool once taken.
+export const CARDS = [
+  // --- Stat cards (common, multi-take) ---
   {
     id: 'damage',
-    label: 'Урон',
+    label: 'Точный удар',
     desc: '+5 к урону',
-    stat: 'damage',
-    amount: 5,
-    baseCost: 30,
-    costScale: 1.5,
     icon: '⚔',
+    rarity: Rarity.COMMON,
+    stackable: true,
+    apply: (p) => { p.damage += 5; },
   },
   {
     id: 'maxHp',
-    label: 'Здоровье',
-    desc: '+25 макс. HP',
-    stat: 'maxHp',
-    amount: 25,
-    baseCost: 25,
-    costScale: 1.4,
+    label: 'Крепкий череп',
+    desc: '+25 макс. HP и исцеление',
     icon: '❤',
+    rarity: Rarity.COMMON,
+    stackable: true,
+    apply: (p) => { p.maxHp += 25; p.hp += 25; },
   },
   {
     id: 'speed',
-    label: 'Скорость',
+    label: 'Лёгкая походка',
     desc: '+20 к скорости',
-    stat: 'speed',
-    amount: 20,
-    baseCost: 20,
-    costScale: 1.3,
     icon: '👢',
+    rarity: Rarity.COMMON,
+    stackable: true,
+    apply: (p) => { p.speed += 20; },
   },
   {
     id: 'attackRange',
-    label: 'Радиус атаки',
-    desc: '+4 к радиусу',
-    stat: 'attackRange',
-    amount: 4,
-    baseCost: 35,
-    costScale: 1.6,
+    label: 'Длинная рука',
+    desc: '+4 к радиусу атаки',
     icon: '🗡',
+    rarity: Rarity.COMMON,
+    stackable: true,
+    apply: (p) => { p.attackRange += 4; },
+  },
+  {
+    id: 'cooldown',
+    label: 'Быстрый замах',
+    desc: '−12% к перезарядке атаки',
+    icon: '⏱',
+    rarity: Rarity.COMMON,
+    stackable: true,
+    apply: (p) => { p.attackCooldown = Math.max(0.12, p.attackCooldown * 0.88); },
+  },
+  // --- Mechanical cards (uncommon) ---
+  {
+    id: 'lifesteal',
+    label: 'Вампиризм',
+    desc: '+10% HP от нанесённого урона',
+    icon: '🩸',
+    rarity: Rarity.UNCOMMON,
+    stackable: true,
+    apply: (p) => { p.lifestealPct += 0.10; },
+  },
+  {
+    id: 'magnet',
+    label: 'Жадные руки',
+    desc: '+50% к радиусу магнита',
+    icon: '🧲',
+    rarity: Rarity.UNCOMMON,
+    stackable: true,
+    apply: (p) => { p.magnetRangeMul += 0.5; },
+  },
+  {
+    id: 'thorns',
+    label: 'Шипы',
+    desc: 'Ближники получают 25% урона в ответ',
+    icon: '🌵',
+    rarity: Rarity.UNCOMMON,
+    stackable: true,
+    apply: (p) => { p.thornsPct += 0.25; },
+  },
+  {
+    id: 'regen',
+    label: 'Второе дыхание',
+    desc: '+2 HP/сек регенерации',
+    icon: '💚',
+    rarity: Rarity.UNCOMMON,
+    stackable: true,
+    apply: (p) => { p.regenPerSec += 2; },
+  },
+  {
+    id: 'dashCooldown',
+    label: 'Быстрые ноги',
+    desc: '−25% к кулдауну рывка',
+    icon: '⚡',
+    rarity: Rarity.UNCOMMON,
+    stackable: true,
+    apply: (p) => { p.dashCooldownMax = Math.max(0.1, p.dashCooldownMax * 0.75); },
+  },
+  // --- Rare cards ---
+  {
+    id: 'glassCannon',
+    label: 'Берсерк',
+    desc: '+12 урона, −15 макс. HP',
+    icon: '💀',
+    rarity: Rarity.RARE,
+    stackable: true,
+    apply: (p) => {
+      p.damage += 12;
+      p.maxHp = Math.max(10, p.maxHp - 15);
+      p.hp = Math.min(p.hp, p.maxHp);
+    },
+  },
+  {
+    id: 'wideArc',
+    label: 'Круговой удар',
+    desc: 'Атака бьёт во все стороны',
+    icon: '🌀',
+    rarity: Rarity.RARE,
+    stackable: false,
+    apply: (p) => { p.fullArcAttack = true; },
   },
 ];
 
+// Roll one card from the pool, weighted by rarity, excluding already-drawn ids
+// and unstackable cards the player already owns. `rng` is optional — sims
+// pass a seeded generator; the live game falls back to Math.random.
+function rollCard(exclude, ownedUnstackable, rng) {
+  const pool = CARDS.filter(c => {
+    if (exclude.has(c.id)) return false;
+    if (!c.stackable && ownedUnstackable.has(c.id)) return false;
+    return true;
+  });
+  if (pool.length === 0) return null;
+
+  const totalWeight = pool.reduce((s, c) => s + RARITY_WEIGHT[c.rarity], 0);
+  const rand = rng ? rng.next : Math.random;
+  let roll = rand() * totalWeight;
+  for (const card of pool) {
+    roll -= RARITY_WEIGHT[card.rarity];
+    if (roll <= 0) return card;
+  }
+  return pool[pool.length - 1];
+}
+
+// Draw N distinct cards at once.
+function drawCards(count, ownedUnstackable, rng) {
+  const drawn = [];
+  const seen = new Set();
+  for (let i = 0; i < count; i++) {
+    const card = rollCard(seen, ownedUnstackable, rng);
+    if (!card) break;
+    drawn.push(card);
+    seen.add(card.id);
+  }
+  return drawn;
+}
+
+const REROLL_BASE_COST = 10;
+const REROLL_COST_GROWTH = 2;
+const DRAFT_SIZE = 5;
+
+// Draft can be entered from two places:
+//   FREE — end-of-wave mandatory draft, picks cost nothing.
+//   PAID — in-world shop entered by walking up to the hut. Picks cost gold.
+export const DraftMode = {
+  FREE: 'free',
+  PAID: 'paid',
+};
+
 export class UI {
   constructor() {
-    // Track how many times each upgrade has been purchased
-    this.upgradeCounts = {};
-    for (const upg of UPGRADES) {
-      this.upgradeCounts[upg.id] = 0;
-    }
+    // Track upgrade/card purchase counts per id (for menu stats / unstackable check).
+    this.cardCounts = {};
+    // Cards on current draft offer.
+    this.draftOffer = [];
+    // Current draft mode — determines whether picks cost gold.
+    this.draftMode = DraftMode.FREE;
+    // Reroll counter for this shop visit.
+    this.rerollCount = 0;
+    // Wave at which the paid offer was last rolled. Paid offer persists inside
+    // a wave so players can't re-roll by exiting and re-entering the shop.
+    this._paidOfferWave = -1;
 
-    // Button rects for shop items (computed during render, used for click detection)
-    this._shopButtons = [];
-    // "Next wave" button rect
-    this._nextWaveButton = null;
+    // Interaction rects set during render.
+    this._cardButtons = [];
+    this._rerollButton = null;
+    this._skipButton = null;
   }
 
   reset() {
-    for (const upg of UPGRADES) {
-      this.upgradeCounts[upg.id] = 0;
+    this.cardCounts = {};
+    this.draftOffer = [];
+    this.draftMode = DraftMode.FREE;
+    this.rerollCount = 0;
+    this._paidOfferWave = -1;
+    this._cardButtons = [];
+    this._rerollButton = null;
+    this._skipButton = null;
+  }
+
+  _ownedUnstackable() {
+    const set = new Set();
+    for (const id in this.cardCounts) {
+      const card = CARDS.find(c => c.id === id);
+      if (card && !card.stackable && this.cardCounts[id] > 0) set.add(id);
     }
-    this._shopButtons = [];
-    this._nextWaveButton = null;
+    return set;
   }
 
-  // Get the current cost of an upgrade
-  getUpgradeCost(upgrade) {
-    const count = this.upgradeCounts[upgrade.id];
-    return Math.floor(upgrade.baseCost * Math.pow(upgrade.costScale, count));
+  // Begin a free draft (end-of-wave). Always rolls a fresh offer.
+  beginFreeDraft(rng = null) {
+    this.draftMode = DraftMode.FREE;
+    this.rerollCount = 0;
+    this.draftOffer = drawCards(DRAFT_SIZE, this._ownedUnstackable(), rng);
   }
 
-  // Try to purchase an upgrade. Returns true if successful.
-  tryPurchase(upgradeIndex, player) {
-    if (upgradeIndex < 0 || upgradeIndex >= UPGRADES.length) return false;
-    const upgrade = UPGRADES[upgradeIndex];
-    const cost = this.getUpgradeCost(upgrade);
-    if (player.gold < cost) return false;
+  // Begin a paid draft (in-world shop). Offer persists across visits during
+  // the same wave; only refreshes when `currentWave` differs from the last
+  // roll so exit/re-enter cannot be used as a free reroll.
+  beginPaidDraft(currentWave, rng = null) {
+    this.draftMode = DraftMode.PAID;
+    if (currentWave !== this._paidOfferWave || this.draftOffer.length === 0) {
+      this._paidOfferWave = currentWave;
+      this.rerollCount = 0;
+      this.draftOffer = drawCards(DRAFT_SIZE, this._ownedUnstackable(), rng);
+    }
+  }
 
+  // Called by game when a new wave starts — invalidates paid offer so the
+  // next shop visit shows fresh cards.
+  onWaveStart() {
+    this._paidOfferWave = -1;
+  }
+
+  getCardCost(card) {
+    if (!card) return 0;
+    return RARITY_COST[card.rarity] || 0;
+  }
+
+  getRerollCost() {
+    return REROLL_BASE_COST + this.rerollCount * REROLL_COST_GROWTH;
+  }
+
+  tryReroll(player, rng = null) {
+    const cost = this.getRerollCost();
+    if (!player || player.gold < cost) return false;
     player.gold -= cost;
-    player[upgrade.stat] += upgrade.amount;
-    this.upgradeCounts[upgrade.id]++;
-
-    // If we upgraded maxHp, also heal the same amount
-    if (upgrade.stat === 'maxHp') {
-      player.hp += upgrade.amount;
-    }
-
+    this.rerollCount++;
+    this.draftOffer = drawCards(DRAFT_SIZE, this._ownedUnstackable(), rng);
     return true;
   }
 
-  // Check if a shop button was clicked, return upgrade index or -1
-  handleShopClick(mouseX, mouseY) {
-    for (let i = 0; i < this._shopButtons.length; i++) {
-      const btn = this._shopButtons[i];
+  // Pick a card from the current offer. In paid mode, deducts gold and bails
+  // out if the player can't afford it. Returns true if a card was applied.
+  pickCard(index, player) {
+    if (!player) return false;
+    if (index < 0 || index >= this.draftOffer.length) return false;
+    const card = this.draftOffer[index];
+    if (!card) return false;
+
+    if (this.draftMode === DraftMode.PAID) {
+      const cost = this.getCardCost(card);
+      if (player.gold < cost) return false;
+      player.gold -= cost;
+    }
+
+    card.apply(player);
+    this.cardCounts[card.id] = (this.cardCounts[card.id] || 0) + 1;
+
+    if (this.draftMode === DraftMode.PAID) {
+      // Remove the card from the shop offer so it can't be bought twice in
+      // a row. Players can reroll for gold to see new options.
+      this.draftOffer.splice(index, 1);
+    } else {
+      // Free draft: one pick, then the offer is consumed.
+      this.draftOffer = [];
+    }
+    return true;
+  }
+
+  // Hit-test the card offers; returns index or -1.
+  handleDraftClick(mouseX, mouseY) {
+    for (let i = 0; i < this._cardButtons.length; i++) {
+      const btn = this._cardButtons[i];
       if (pointInRect(mouseX, mouseY, btn.x, btn.y, btn.w, btn.h)) {
         return i;
       }
@@ -105,11 +320,16 @@ export class UI {
     return -1;
   }
 
-  // Check if "next wave" button was clicked
-  isNextWaveClicked(mouseX, mouseY) {
-    if (!this._nextWaveButton) return false;
-    const btn = this._nextWaveButton;
-    return pointInRect(mouseX, mouseY, btn.x, btn.y, btn.w, btn.h);
+  isRerollClicked(mouseX, mouseY) {
+    if (!this._rerollButton) return false;
+    const b = this._rerollButton;
+    return pointInRect(mouseX, mouseY, b.x, b.y, b.w, b.h);
+  }
+
+  isSkipClicked(mouseX, mouseY) {
+    if (!this._skipButton) return false;
+    const b = this._skipButton;
+    return pointInRect(mouseX, mouseY, b.x, b.y, b.w, b.h);
   }
 
   // --- Render methods ---
@@ -119,57 +339,64 @@ export class UI {
     const cy = r.height / 2;
     const t = performance.now() / 1000;
 
-    // Overlay with gradient-like bands
     r.setAlpha(0.75);
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
     r.resetAlpha();
 
-    // Decorative crossed swords behind title
     const swordY = cy - 100;
     r.setAlpha(0.2);
     r.line(cx - 80, swordY - 30, cx + 80, swordY + 30, '#ffd700', 3);
     r.line(cx + 80, swordY - 30, cx - 80, swordY + 30, '#ffd700', 3);
     r.resetAlpha();
 
-    // Title with pulsing glow
     const pulse = 0.85 + 0.15 * Math.sin(t * 2);
     r.setAlpha(pulse * 0.3);
     r.textOutlined('КОРОВАНЫ', cx, cy - 99, '#ffaa00', '#000', 68, 'center', 'middle');
     r.resetAlpha();
     r.textOutlined('КОРОВАНЫ', cx, cy - 100, '#ffd700', '#000', 64, 'center', 'middle');
 
-    // Decorative line under title
-    const lineW = 200;
     r.setAlpha(0.5);
-    r.line(cx - lineW / 2, cy - 55, cx + lineW / 2, cy - 55, '#ffd700', 1);
+    r.line(cx - 100, cy - 55, cx + 100, cy - 55, '#ffd700', 1);
     r.resetAlpha();
 
-    // Subtitle
     r.textOutlined('грабь корованы!', cx, cy - 30, '#e8c872', '#000', 24, 'center', 'middle');
 
-    // Instructions with slightly faded look
-    r.textOutlined('WASD / стрелки - движение', cx, cy + 40, '#aaa', '#000', 16, 'center', 'middle');
-    r.textOutlined('Пробел / клик - атака', cx, cy + 65, '#aaa', '#000', 16, 'center', 'middle');
+    // Best record
+    const bestScore = getBestScore();
+    const bestWave = getBestWave();
+    if (bestScore > 0 || bestWave > 0) {
+      r.textOutlined(
+        `Рекорд: ${bestScore}  •  Волна: ${bestWave}`,
+        cx, cy + 10, '#ffc85a', '#000', 16, 'center', 'middle'
+      );
+    }
 
-    // Animated gold coins drifting down (purely visual using sine)
+    r.textOutlined('WASD / стрелки - движение', cx, cy + 45, '#aaa', '#000', 16, 'center', 'middle');
+    r.textOutlined('Пробел / клик - атака   •   Shift - рывок   •   E - магазин', cx, cy + 68, '#aaa', '#000', 14, 'center', 'middle');
+    r.textOutlined('Esc - пауза   •   M - звук   •   L - экспорт логов', cx, cy + 89, '#888', '#000', 13, 'center', 'middle');
+
+    // Session log indicator — helps remember that logs are stored locally.
+    const n = countSessions();
+    if (n > 0) {
+      r.text(`Логов сессий: ${n}  (L — скачать, Shift+L — очистить)`, 10, r.height - 20, '#666', 12, 'left');
+    }
+
     r.setAlpha(0.4);
     for (let i = 0; i < 5; i++) {
       const coinX = cx - 160 + i * 80;
-      const coinY = cy + 90 + Math.sin(t * 1.5 + i * 1.3) * 8;
+      const coinY = cy + 130 + Math.sin(t * 1.5 + i * 1.3) * 8;
       r.circle(coinX, coinY, 4, '#ffd700');
       r.circle(coinX - 1, coinY - 1, 2, '#ffee66');
     }
     r.resetAlpha();
 
-    // Start prompt with smooth fade instead of harsh blink
     const promptAlpha = 0.5 + 0.5 * Math.sin(t * 3);
     r.setAlpha(promptAlpha);
-    r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 130, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 170, '#fff', '#000', 20, 'center', 'middle');
     r.resetAlpha();
 
-    // Version / credits
     r.setAlpha(0.3);
-    r.text('v1.0', r.width - 40, r.height - 20, '#888', 12, 'right');
+    r.text('v1.1', r.width - 40, r.height - 20, '#888', 12, 'right');
     r.resetAlpha();
   }
 
@@ -182,88 +409,159 @@ export class UI {
     r.text(waveText, 10, 10, waveColor, 16);
     r.text(`Счёт: ${game.score}`, 180, 10, CONST.COLOR_GOLD, 16);
     if (player) {
-      // HP bar in HUD
       r.healthBar(310, 12, 100, 14, player.hp / player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
       r.text(`${player.hp}/${player.maxHp}`, 420, 10, '#fff', 14);
-      // Gold
       r.text(`\u2B50 ${player.gold}`, 500, 10, CONST.COLOR_GOLD, 16);
+
+      // Dash cooldown: small bar that fills up as dash recharges. Bright
+      // yellow when ready, dim gray while on cooldown.
+      const dashX = 560;
+      const dashY = 14;
+      const dashW = 30;
+      const dashH = 10;
+      const dashReady = player.dashCooldownTimer <= 0;
+      const frac = dashReady ? 1 : 1 - (player.dashCooldownTimer / player.dashCooldownMax);
+      r.rect(dashX, dashY, dashW, dashH, '#222');
+      r.rect(dashX, dashY, Math.round(dashW * frac), dashH, dashReady ? '#ffd700' : '#886622');
+      r.text('⚡', dashX + dashW + 4, 10, dashReady ? '#ffd700' : '#666', 14);
     }
-    // Enemy/caravan count
     const aliveCaravans = game.caravans.filter(c => c.alive).length;
     const aliveGuards = game.guards.filter(g => g.alive).length;
-    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 600, 10, '#ddd', 14);
+    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 630, 10, '#ddd', 14);
+
+    // Mute indicator at the right edge.
+    if (game.audio && game.audio.muted) {
+      r.text('🔇', r.width - 30, 10, '#ffaa00', 18, 'right');
+    }
   }
 
-  renderShop(r, player) {
+  renderShop(r, player, game) {
     const cx = r.width / 2;
+    const paid = this.draftMode === DraftMode.PAID;
 
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
 
-    // Title
-    r.textOutlined('МАГАЗИН', cx, 50, '#ffd700', '#000', 40, 'center', 'middle');
+    const title = paid ? 'ТОРГОВЕЦ' : 'ВЫБЕРИ КАРТУ';
+    r.textOutlined(title, cx, 50, '#ffd700', '#000', 38, 'center', 'middle');
+    r.textOutlined(
+      `Золото: ${player ? player.gold : 0}`,
+      cx, 90, CONST.COLOR_GOLD, '#000', 20, 'center', 'middle'
+    );
 
-    // Gold display
-    r.textOutlined(`Золото: ${player ? player.gold : 0}`, cx, 100, CONST.COLOR_GOLD, '#000', 22, 'center', 'middle');
+    // Five narrower cards side-by-side.
+    this._cardButtons = [];
+    const cardW = 150;
+    const cardH = 240;
+    const gap = 14;
+    const totalW = DRAFT_SIZE * cardW + (DRAFT_SIZE - 1) * gap;
+    const startX = cx - totalW / 2;
+    const cardY = 130;
 
-    // Upgrade buttons
-    this._shopButtons = [];
-    const btnW = 260;
-    const btnH = 60;
-    const startY = 150;
-    const gap = 15;
+    for (let i = 0; i < this.draftOffer.length; i++) {
+      const card = this.draftOffer[i];
+      const x = startX + i * (cardW + gap);
+      this._cardButtons.push({ x, y: cardY, w: cardW, h: cardH });
 
-    for (let i = 0; i < UPGRADES.length; i++) {
-      const upg = UPGRADES[i];
-      const cost = this.getUpgradeCost(upg);
-      const canAfford = player && player.gold >= cost;
-      const bx = cx - btnW / 2;
-      const by = startY + i * (btnH + gap);
+      const cost = paid ? this.getCardCost(card) : 0;
+      const canAfford = !paid || (player && player.gold >= cost);
 
-      this._shopButtons.push({ x: bx, y: by, w: btnW, h: btnH });
+      // Background + rarity border
+      r.rect(x, cardY, cardW, cardH, canAfford ? '#222237' : '#1a1a24');
+      r.strokeRect(x, cardY, cardW, cardH, RARITY_COLOR[card.rarity], 3);
 
-      // Button background
-      const bgColor = canAfford ? '#2a4a2a' : '#3a2a2a';
-      r.rect(bx, by, btnW, btnH, bgColor);
-      r.strokeRect(bx, by, btnW, btnH, canAfford ? '#4a8a4a' : '#5a3a3a', 2);
+      // Rarity label
+      r.text(card.rarity.toUpperCase(), x + cardW / 2, cardY + 12, RARITY_COLOR[card.rarity], 11, 'center');
 
-      // Icon and label
-      const textColor = canAfford ? '#fff' : '#666';
-      r.text(`${upg.icon} ${upg.label}`, bx + 10, by + 8, textColor, 18);
+      // Icon (big)
+      const iconColor = canAfford ? '#fff' : '#555';
+      r.textOutlined(card.icon, x + cardW / 2, cardY + 64, iconColor, '#000', 44, 'center', 'middle');
+
+      // Title
+      r.textOutlined(
+        card.label,
+        x + cardW / 2, cardY + 128,
+        canAfford ? '#fff' : '#666', '#000', 16, 'center', 'middle'
+      );
 
       // Description
-      r.text(upg.desc, bx + 10, by + 34, canAfford ? '#aaa' : '#555', 13);
+      r.text(card.desc, x + cardW / 2, cardY + 155, canAfford ? '#bbb' : '#555', 11, 'center');
 
-      // Cost
-      const costText = `${cost}`;
-      r.text(costText, bx + btnW - 10, by + 18, canAfford ? CONST.COLOR_GOLD : '#664400', 18, 'right');
-
-      // Current level
-      const lvl = this.upgradeCounts[upg.id];
-      if (lvl > 0) {
-        r.text(`x${lvl}`, bx + btnW - 10, by + 40, '#888', 12, 'right');
+      // Cost (paid mode) or owned count (free mode)
+      if (paid) {
+        const costColor = canAfford ? CONST.COLOR_GOLD : '#664400';
+        r.textOutlined(
+          `${cost} \u2B50`,
+          x + cardW / 2, cardY + cardH - 22,
+          costColor, '#000', 16, 'center', 'middle'
+        );
+      } else {
+        const owned = this.cardCounts[card.id] || 0;
+        if (owned > 0) {
+          r.text(`у тебя: x${owned}`, x + cardW / 2, cardY + cardH - 20, '#888', 11, 'center');
+        }
       }
     }
 
-    // Player stats summary
+    // Reroll button
+    const rerollCost = this.getRerollCost();
+    const canReroll = player && player.gold >= rerollCost;
+    const rrW = 180;
+    const rrH = 40;
+    const rrX = cx - rrW - 10;
+    const rrY = cardY + cardH + 30;
+    this._rerollButton = { x: rrX, y: rrY, w: rrW, h: rrH };
+
+    r.rect(rrX, rrY, rrW, rrH, canReroll ? '#3a2a5a' : '#2a2a3a');
+    r.strokeRect(rrX, rrY, rrW, rrH, canReroll ? '#6a4a8a' : '#4a4a5a', 2);
+    r.textOutlined(
+      `⟳ Реролл (${rerollCost})`,
+      rrX + rrW / 2, rrY + rrH / 2,
+      canReroll ? '#fff' : '#666', '#000', 16, 'center', 'middle'
+    );
+
+    // Skip / Close button — label adapts to mode.
+    const skW = 180;
+    const skH = 40;
+    const skX = cx + 10;
+    const skY = rrY;
+    this._skipButton = { x: skX, y: skY, w: skW, h: skH };
+    r.rect(skX, skY, skW, skH, '#2a3a5a');
+    r.strokeRect(skX, skY, skW, skH, '#4a6a8a', 2);
+    const skLabel = paid ? 'Выйти из шопа' : 'Пропустить >';
+    r.textOutlined(skLabel, skX + skW / 2, skY + skH / 2, '#fff', '#000', 16, 'center', 'middle');
+
+    // Stats summary
     if (player) {
-      const statsY = startY + UPGRADES.length * (btnH + gap) + 20;
-      r.textOutlined('Характеристики:', cx, statsY, '#aaa', '#000', 16, 'center', 'middle');
-      r.text(`Урон: ${player.damage}`, cx - 120, statsY + 25, '#ccc', 14);
-      r.text(`HP: ${player.hp}/${player.maxHp}`, cx - 120, statsY + 45, '#ccc', 14);
-      r.text(`Скорость: ${player.speed}`, cx + 20, statsY + 25, '#ccc', 14);
-      r.text(`Радиус: ${player.attackRange}`, cx + 20, statsY + 45, '#ccc', 14);
+      const sy = rrY + rrH + 30;
+      r.textOutlined('Характеристики:', cx, sy, '#aaa', '#000', 15, 'center', 'middle');
+      r.text(`Урон: ${player.damage}`, cx - 200, sy + 22, '#ccc', 13);
+      r.text(`HP: ${player.hp}/${player.maxHp}`, cx - 70, sy + 22, '#ccc', 13);
+      r.text(`Скорость: ${player.speed}`, cx + 60, sy + 22, '#ccc', 13);
+      r.text(`Радиус: ${player.attackRange}`, cx + 200, sy + 22, '#ccc', 13);
+      if (player.lifestealPct > 0) {
+        r.text(`Вамп: ${Math.round(player.lifestealPct * 100)}%`, cx - 200, sy + 42, '#d46a7a', 13);
+      }
+      if (player.thornsPct > 0) {
+        r.text(`Шипы: ${Math.round(player.thornsPct * 100)}%`, cx - 70, sy + 42, '#6bbf4a', 13);
+      }
+      if (player.magnetRangeMul > 1) {
+        r.text(`Магнит: x${player.magnetRangeMul.toFixed(1)}`, cx + 60, sy + 42, '#d4a020', 13);
+      }
+      if (player.fullArcAttack) {
+        r.text('Круговая атака', cx + 200, sy + 42, '#e2b44a', 13);
+      }
     }
+  }
 
-    // Next wave button
-    const nwBtnW = 240;
-    const nwBtnH = 45;
-    const nwBtnX = cx - nwBtnW / 2;
-    const nwBtnY = r.height - 80;
-    this._nextWaveButton = { x: nwBtnX, y: nwBtnY, w: nwBtnW, h: nwBtnH };
-
-    r.rect(nwBtnX, nwBtnY, nwBtnW, nwBtnH, '#2a3a5a');
-    r.strokeRect(nwBtnX, nwBtnY, nwBtnW, nwBtnH, '#4a6a8a', 2);
-    r.textOutlined('Следующая волна >', cx, nwBtnY + nwBtnH / 2, '#fff', '#000', 18, 'center', 'middle');
+  renderPaused(r) {
+    r.setAlpha(0.6);
+    r.rect(0, 0, r.width, r.height, '#000');
+    r.resetAlpha();
+    const cx = r.width / 2;
+    const cy = r.height / 2;
+    r.textOutlined('ПАУЗА', cx, cy - 20, '#ffd700', '#000', 56, 'center', 'middle');
+    r.textOutlined('Esc / P - продолжить', cx, cy + 30, '#ccc', '#000', 18, 'center', 'middle');
+    r.textOutlined('M - звук', cx, cy + 56, '#888', '#000', 14, 'center', 'middle');
   }
 
   renderGameOver(r, game) {
@@ -271,10 +569,21 @@ export class UI {
     const cy = r.height / 2;
 
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
-    r.textOutlined('КОНЕЦ ИГРЫ', cx, cy - 80, '#e74c3c', '#000', 48, 'center', 'middle');
-    r.textOutlined(`Погиб на волне: ${game.wave}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Корованов ограблено: ${game.caravansRobbed}`, cx, cy + 25, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Счёт: ${game.score}`, cx, cy + 60, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
+    r.textOutlined('КОНЕЦ ИГРЫ', cx, cy - 110, '#e74c3c', '#000', 48, 'center', 'middle');
+    r.textOutlined(`Погиб на волне: ${game.wave}`, cx, cy - 40, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(`Корованов ограблено: ${game.caravansRobbed}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(`Счёт: ${game.score}`, cx, cy + 25, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
+
+    const bestScore = getBestScore();
+    const bestWave = getBestWave();
+    if (game.newRecord) {
+      r.textOutlined('НОВЫЙ РЕКОРД!', cx, cy + 65, '#00ff88', '#000', 22, 'center', 'middle');
+    } else if (bestScore > 0) {
+      r.textOutlined(
+        `Рекорд: ${bestScore} (волна ${bestWave})`,
+        cx, cy + 65, '#aaa', '#000', 16, 'center', 'middle'
+      );
+    }
 
     const blink = Math.sin(performance.now() / 300) > 0;
     if (blink) {
@@ -282,6 +591,3 @@ export class UI {
     }
   }
 }
-
-// Export for testing
-export { UPGRADES };
