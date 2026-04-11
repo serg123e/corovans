@@ -83,6 +83,47 @@ export function spawnGoldSparkle(particles, x, y) {
   }
 }
 
+// Visual slash arc that sweeps in front of the player on attack.
+// Implements the same update(dt)/render(renderer)/alive shape as Particle so
+// it can live in the same particles array.
+export class SlashEffect {
+  constructor(x, y, angle, reach) {
+    this.x = x;
+    this.y = y;
+    this.angle = angle;
+    this.reach = reach;
+    this.life = 0.18;
+    this.maxLife = 0.18;
+    this.alive = true;
+  }
+
+  update(dt) {
+    if (!this.alive) return;
+    this.life -= dt;
+    if (this.life <= 0) this.alive = false;
+  }
+
+  render(renderer) {
+    if (!this.alive) return;
+    const t = 1 - this.life / this.maxLife; // 0 → 1
+    const alpha = 1 - t;
+    const halfArc = Math.PI * 0.55;
+    const swing = halfArc * (0.35 + 0.65 * t);
+    const start = this.angle - swing;
+    const end = this.angle + swing;
+    renderer.setAlpha(alpha);
+    renderer.strokeArc(this.x, this.y, this.reach, start, end, '#ffffff', 5);
+    renderer.strokeArc(this.x, this.y, this.reach - 3, start, end, '#ffeeaa', 2);
+    renderer.resetAlpha();
+  }
+}
+
+// Spawn a slash effect in the direction (facingX, facingY) at distance `reach`
+export function spawnSlash(particles, x, y, facingX, facingY, reach) {
+  const angle = Math.atan2(facingY, facingX);
+  particles.push(new SlashEffect(x, y, angle, reach));
+}
+
 // Blood/death particles when guard dies
 export function spawnDeathBurst(particles, x, y) {
   const count = 8 + Math.floor(Math.random() * 5);

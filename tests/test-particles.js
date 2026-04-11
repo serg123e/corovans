@@ -1,6 +1,6 @@
 // Tests for particle system
 
-import { Particle, spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, updateParticles } from '../js/particles.js';
+import { Particle, SlashEffect, spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, spawnSlash, updateParticles } from '../js/particles.js';
 
 let passed = 0;
 let failed = 0;
@@ -195,6 +195,30 @@ function assertApprox(a, b, message, epsilon = 0.5) {
   p.update(0.1);
   assertApprox(p.pos.x, 40, 'Negative vel x moves left');
   assertApprox(p.pos.y, 30, 'Negative vel y moves up');
+}
+
+// --- SlashEffect ---
+{
+  const particles = [];
+  spawnSlash(particles, 100, 200, 1, 0, 40);
+  assert(particles.length === 1, 'spawnSlash pushes exactly one effect');
+  const slash = particles[0];
+  assert(slash instanceof SlashEffect, 'spawnSlash creates a SlashEffect');
+  assert(slash.alive, 'Slash starts alive');
+  assert(slash.x === 100 && slash.y === 200, 'Slash stores origin');
+  assertApprox(slash.angle, 0, 'Slash angle matches facing right');
+  assert(slash.reach === 40, 'Slash stores reach');
+  assert(slash.life > 0 && slash.life === slash.maxLife, 'Slash life initialized');
+}
+
+{
+  // Slash lives through updateParticles and dies when its life runs out
+  const particles = [];
+  spawnSlash(particles, 0, 0, 0, 1, 30);
+  updateParticles(particles, 0.01);
+  assert(particles.length === 1, 'Slash survives short tick');
+  updateParticles(particles, 1.0);
+  assert(particles.length === 0, 'Slash removed after long tick');
 }
 
 // Summary

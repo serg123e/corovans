@@ -213,6 +213,76 @@ function mockInput(mx = 0, my = 0) {
   assert(p.vel.y === 0, 'Reset clears velocity y');
 }
 
+// --- HP regenerates slowly over time ---
+{
+  const p = new Player(100, 100);
+  p.takeDamage(50);
+  const start = p.hp;
+  // Simulate 3 seconds. At 2 HP/sec, ~6 HP should regenerate.
+  const dt = 1 / 60;
+  for (let i = 0; i < 180; i++) {
+    p.update(dt, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assert(p.hp > start, 'Player HP regenerates over time');
+  // Floating-point accumulation can land one HP short of the ideal value.
+  const expected = CONST.PLAYER_HP_REGEN_PER_SEC * 3;
+  assert(Math.abs(p.hp - start - expected) <= 1, 'Regen produces ~2 HP per second');
+  assert(Number.isInteger(p.hp), 'Regenerated HP stays an integer');
+}
+
+// --- HP regen is capped at maxHp ---
+{
+  const p = new Player(100, 100);
+  const dt = 1 / 60;
+  for (let i = 0; i < 600; i++) {
+    p.update(dt, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assert(p.hp === p.maxHp, 'Regen does not exceed maxHp');
+}
+
+// --- Regen accumulator resets on damage ---
+{
+  const p = new Player(100, 100);
+  p.takeDamage(50);
+  const dt = 1 / 60;
+  // Partial tick — accumulator > 0 but no whole HP added yet.
+  p.update(dt * 10, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  p.takeDamage(5);
+  assert(p.regenAccum === 0, 'Taking damage clears the regen accumulator');
+}
+
+// --- Dead player does not regenerate ---
+{
+  const p = new Player(100, 100);
+  p.takeDamage(9999);
+  const dt = 1 / 60;
+  for (let i = 0; i < 120; i++) {
+    p.update(dt, mockInput(0, 0), CONST.WORLD_W, CONST.WORLD_H);
+  }
+  assert(p.hp === 0, 'Dead player does not heal');
+  assert(p.alive === false, 'Dead player stays dead');
+}
+
+// --- face() normalizes the given direction vector ---
+{
+  const p = new Player(100, 100);
+  p.face(10, 0);
+  assertApprox(p.facing.x, 1, 'face right normalizes x');
+  assertApprox(p.facing.y, 0, 'face right normalizes y');
+
+  p.face(-3, -4);
+  assertApprox(p.facing.x, -0.6, 'face normalizes negative x', 0.01);
+  assertApprox(p.facing.y, -0.8, 'face normalizes negative y', 0.01);
+}
+
+// --- face() ignores zero vector so facing never becomes NaN ---
+{
+  const p = new Player(100, 100);
+  p.face(1, 0);
+  p.face(0, 0);
+  assert(p.facing.x === 1 && p.facing.y === 0, 'face(0,0) leaves facing unchanged');
+}
+
 // --- Attack cooldown ticks down ---
 {
   const p = new Player(100, 100);

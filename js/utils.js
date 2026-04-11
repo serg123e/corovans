@@ -163,6 +163,7 @@ export const CONST = {
   PLAYER_BASE_DAMAGE: 15,
   PLAYER_ATTACK_RANGE: 28,
   PLAYER_ATTACK_COOLDOWN: 0.4,
+  PLAYER_HP_REGEN_PER_SEC: 2,
 
   // Guards - basic (sword)
   GUARD_SPEED: 80,

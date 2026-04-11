@@ -10,7 +10,7 @@ style.css           - Minimal full-screen canvas styling
 js/
   main.js           - Bootstrap, creates Renderer/Input/Game
   game.js           - Game class, fixed-timestep loop, state machine (menu/playing/shop/gameover)
-  input.js          - Keyboard/mouse input tracking
+  input.js          - Keyboard/mouse/touch input tracking
   renderer.js       - Canvas drawing utilities (rect, circle, text, etc.)
   camera.js         - Camera with follow, shake, world-to-screen conversion
   world.js          - Desert terrain + road generation (cached to offscreen canvas)
@@ -30,11 +30,12 @@ tests/
   test-ui.js        - UI logic tests
   test-collision.js - Collision detection tests
   test-particles.js - Particle system tests
+  test-input.js     - Input handling tests (touch, keyboard override, tap vs. drag)
 ```
 
 ## Commands
 
-- Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js`
+- Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js && node tests/test-input.js`
 - Play: open `index.html` in browser (no server needed, uses ES modules)
 - No linter or formatter configured
 

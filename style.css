@@ -18,4 +18,8 @@ canvas#game {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   cursor: crosshair;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }

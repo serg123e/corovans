@@ -109,6 +109,7 @@ export class Player {
     // Combat state
     this.attackTimer = 0;
     this.alive = true;
+    this.regenAccum = 0;
     this.isAttacking = false;
     this.attackAnimTimer = 0;
     this.attackAnimDuration = 0.2; // seconds the attack anim plays
@@ -156,6 +157,19 @@ export class Player {
     // Update attack cooldown
     if (this.attackTimer > 0) {
       this.attackTimer -= dt;
+    }
+
+    // Passive health regeneration. HP is displayed as an integer, so we
+    // accumulate fractional regen and apply it one whole point at a time.
+    if (this.hp < this.maxHp) {
+      this.regenAccum += CONST.PLAYER_HP_REGEN_PER_SEC * dt;
+      if (this.regenAccum >= 1) {
+        const whole = Math.floor(this.regenAccum);
+        this.hp = Math.min(this.maxHp, this.hp + whole);
+        this.regenAccum -= whole;
+      }
+    } else {
+      this.regenAccum = 0;
     }
 
     // Update animation
@@ -269,12 +283,24 @@ export class Player {
     }
   }
 
+  // Turn the player to face the given direction vector. Zero-length vectors
+  // are ignored so facing never degenerates to NaN.
+  face(dx, dy) {
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0.0001) {
+      this.facing = new Vec2(dx / len, dy / len);
+    }
+  }
+
   takeDamage(amount) {
     if (!this.alive) return;
     this.hp -= amount;
     // Squash on hit
     this.squashX = 0.7;
     this.squashY = 1.3;
+    // Reset regen accumulator so progress toward the next HP tick doesn't
+    // carry over through damage.
+    this.regenAccum = 0;
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -295,6 +321,7 @@ export class Player {
     this.hp = this.maxHp;
     this.alive = true;
     this.attackTimer = 0;
+    this.regenAccum = 0;
     this.anim = Anim.IDLE;
     this.animTimer = 0;
     this.animFrame = 0;

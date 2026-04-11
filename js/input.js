@@ -1,11 +1,29 @@
-// Input - keyboard and mouse state tracking
+// Input - keyboard, mouse, and touch state tracking
+
+// Thresholds for distinguishing a "tap" (attack) from a "drag" (move).
+const TAP_MAX_DURATION_MS = 220;
+const TAP_MAX_MOVE_PX = 20;
+// Dead zone around the player when computing touch-based movement direction.
+const TOUCH_MOVE_DEADZONE_PX = 18;
 
 export class Input {
   constructor(canvas) {
     this.keys = {};
     this.keysPressed = {};  // true only on the frame the key was first pressed
     this.mouse = { x: 0, y: 0, down: false, clicked: false };
+    this.touch = { active: false, x: 0, y: 0 };
     this._canvas = canvas;
+
+    // Player screen position, updated each frame by the game so getMovement()
+    // can resolve touch direction without coupling input to player/camera.
+    this._playerScreenX = 0;
+    this._playerScreenY = 0;
+
+    // Tracks the single active touch (multi-touch is ignored).
+    this._touchId = null;
+    this._touchStartX = 0;
+    this._touchStartY = 0;
+    this._touchStartTime = 0;
 
     this._onKeyDown = (e) => {
       if (!this.keys[e.code]) {
@@ -23,11 +41,9 @@ export class Input {
     };
 
     this._onMouseMove = (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width / rect.width;
-      const scaleY = canvas.height / rect.height;
-      this.mouse.x = (e.clientX - rect.left) * scaleX;
-      this.mouse.y = (e.clientY - rect.top) * scaleY;
+      const pt = this._toCanvas(e.clientX, e.clientY);
+      this.mouse.x = pt.x;
+      this.mouse.y = pt.y;
     };
 
     this._onMouseDown = (e) => {
@@ -43,11 +59,88 @@ export class Input {
       }
     };
 
+    this._onTouchStart = (e) => {
+      if (this._touchId !== null) {
+        e.preventDefault();
+        return;
+      }
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const pt = this._toCanvas(t.clientX, t.clientY);
+      this._touchId = t.identifier;
+      this.touch.active = true;
+      this.touch.x = pt.x;
+      this.touch.y = pt.y;
+      this._touchStartX = pt.x;
+      this._touchStartY = pt.y;
+      this._touchStartTime = performance.now();
+      // Keep mouse position in sync so UI hover/hit-tests work.
+      this.mouse.x = pt.x;
+      this.mouse.y = pt.y;
+      e.preventDefault();
+    };
+
+    this._onTouchMove = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this._touchId) continue;
+        const pt = this._toCanvas(t.clientX, t.clientY);
+        this.touch.x = pt.x;
+        this.touch.y = pt.y;
+        this.mouse.x = pt.x;
+        this.mouse.y = pt.y;
+        e.preventDefault();
+        break;
+      }
+    };
+
+    this._onTouchEnd = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this._touchId) continue;
+        const duration = performance.now() - this._touchStartTime;
+        const dx = this.touch.x - this._touchStartX;
+        const dy = this.touch.y - this._touchStartY;
+        const moved = Math.sqrt(dx * dx + dy * dy);
+        // Short, near-stationary release = tap: route through mouse.clicked so
+        // existing attack / UI click code paths fire without special cases.
+        if (duration < TAP_MAX_DURATION_MS && moved < TAP_MAX_MOVE_PX) {
+          this.mouse.clicked = true;
+        }
+        this.touch.active = false;
+        this._touchId = null;
+        e.preventDefault();
+        break;
+      }
+    };
+
+    this._onTouchCancel = (e) => {
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this._touchId) continue;
+        this.touch.active = false;
+        this._touchId = null;
+        break;
+      }
+    };
+
     window.addEventListener('keydown', this._onKeyDown);
     window.addEventListener('keyup', this._onKeyUp);
     canvas.addEventListener('mousemove', this._onMouseMove);
     canvas.addEventListener('mousedown', this._onMouseDown);
     canvas.addEventListener('mouseup', this._onMouseUp);
+    canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this._onTouchCancel, { passive: false });
+  }
+
+  _toCanvas(clientX, clientY) {
+    const canvas = this._canvas;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
   }
 
   // Call at end of each frame to reset per-frame state
@@ -64,7 +157,14 @@ export class Input {
     return !!this.keysPressed[code];
   }
 
-  // Movement vector from WASD / arrow keys, normalized
+  // Game sets this each frame so getMovement() can resolve touch direction.
+  setPlayerScreen(x, y) {
+    this._playerScreenX = x;
+    this._playerScreenY = y;
+  }
+
+  // Movement vector from WASD / arrow keys, normalized.
+  // Falls back to touch: direction from player screen position to held touch.
   getMovement() {
     let x = 0, y = 0;
     if (this.isDown('KeyW') || this.isDown('ArrowUp')) y -= 1;
@@ -73,10 +173,17 @@ export class Input {
     if (this.isDown('KeyD') || this.isDown('ArrowRight')) x += 1;
     const len = Math.sqrt(x * x + y * y);
     if (len > 0) {
-      x /= len;
-      y /= len;
+      return { x: x / len, y: y / len };
     }
-    return { x, y };
+    if (this.touch.active) {
+      const dx = this.touch.x - this._playerScreenX;
+      const dy = this.touch.y - this._playerScreenY;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > TOUCH_MOVE_DEADZONE_PX) {
+        return { x: dx / d, y: dy / d };
+      }
+    }
+    return { x: 0, y: 0 };
   }
 
   wantsAttack() {
@@ -89,5 +196,9 @@ export class Input {
     this._canvas.removeEventListener('mousemove', this._onMouseMove);
     this._canvas.removeEventListener('mousedown', this._onMouseDown);
     this._canvas.removeEventListener('mouseup', this._onMouseUp);
+    this._canvas.removeEventListener('touchstart', this._onTouchStart);
+    this._canvas.removeEventListener('touchmove', this._onTouchMove);
+    this._canvas.removeEventListener('touchend', this._onTouchEnd);
+    this._canvas.removeEventListener('touchcancel', this._onTouchCancel);
   }
 }

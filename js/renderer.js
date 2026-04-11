@@ -49,6 +49,16 @@ export class Renderer {
     this.ctx.stroke();
   }
 
+  strokeArc(x, y, r, startAngle, endAngle, color, lineWidth = 1) {
+    this.ctx.strokeStyle = color;
+    this.ctx.lineWidth = lineWidth;
+    this.ctx.lineCap = 'round';
+    this.ctx.beginPath();
+    this.ctx.arc(x, y, r, startAngle, endAngle);
+    this.ctx.stroke();
+    this.ctx.lineCap = 'butt';
+  }
+
   line(x1, y1, x2, y2, color, lineWidth = 1) {
     this.ctx.strokeStyle = color;
     this.ctx.lineWidth = lineWidth;

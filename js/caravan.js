@@ -364,25 +364,31 @@ export class Guard {
     const caravanPos = this.caravan.alive ? this.caravan.pos : this.pos;
     const distToCaravan = this.pos.dist(caravanPos);
 
-    // State transitions
-    switch (this.state) {
-      case GuardState.PATROL:
-        if (distToPlayer < this.detectionRange) {
-          this.state = GuardState.CHASE;
-        }
-        break;
-      case GuardState.CHASE:
-        if (distToPlayer > this.chaseRange || distToCaravan > this.chaseRange * 1.5) {
-          this.state = GuardState.RETURN;
-        }
-        break;
-      case GuardState.RETURN:
-        if (distToPlayer < this.detectionRange * 0.8) {
-          this.state = GuardState.CHASE;
-        } else if (distToCaravan < 30) {
-          this.state = GuardState.PATROL;
-        }
-        break;
+    // State transitions. Once the caravan is gone, guards no longer have
+    // anything to protect: lock them into CHASE so they keep pursuing the
+    // player instead of drifting back to their (now absent) charge.
+    if (!this.caravan.alive) {
+      this.state = GuardState.CHASE;
+    } else {
+      switch (this.state) {
+        case GuardState.PATROL:
+          if (distToPlayer < this.detectionRange) {
+            this.state = GuardState.CHASE;
+          }
+          break;
+        case GuardState.CHASE:
+          if (distToPlayer > this.chaseRange || distToCaravan > this.chaseRange * 1.5) {
+            this.state = GuardState.RETURN;
+          }
+          break;
+        case GuardState.RETURN:
+          if (distToPlayer < this.detectionRange * 0.8) {
+            this.state = GuardState.CHASE;
+          } else if (distToCaravan < 30) {
+            this.state = GuardState.PATROL;
+          }
+          break;
+      }
     }
 
     // Movement based on state
@@ -407,7 +413,19 @@ export class Guard {
             targetPos = this.pos;
           }
         } else {
-          targetPos = playerPos;
+          // Melee guards stop just outside the player's body so they don't
+          // occlude the sprite by sharing the same tile. Standoff stays inside
+          // attack reach (radius + attackRange), so attacks still land.
+          const toPlayer = playerPos.sub(this.pos);
+          const dist = toPlayer.len();
+          const standoff = this.radius + CONST.PLAYER_RADIUS + 4;
+          if (dist > standoff) {
+            const dir = toPlayer.normalize();
+            targetPos = playerPos.sub(dir.mul(standoff));
+          } else {
+            // Already at the ring - hold position.
+            targetPos = this.pos;
+          }
         }
         break;
       case GuardState.RETURN:
@@ -671,6 +689,60 @@ export class Caravan {
   }
 }
 
+
+// Push overlapping guards apart and out of their caravans. Runs after the
+// guard AI has moved everyone for the frame. Single pass is enough for the
+// cluster sizes we deal with (a few guards per caravan).
+export function resolveGuardCollisions(guards, caravans) {
+  // Guard vs guard
+  for (let i = 0; i < guards.length; i++) {
+    const a = guards[i];
+    if (!a.alive) continue;
+    for (let j = i + 1; j < guards.length; j++) {
+      const b = guards[j];
+      if (!b.alive) continue;
+      const dx = b.pos.x - a.pos.x;
+      const dy = b.pos.y - a.pos.y;
+      const distSq = dx * dx + dy * dy;
+      const minDist = a.radius + b.radius;
+      if (distSq >= minDist * minDist) continue;
+      if (distSq > 0.0001) {
+        const dist = Math.sqrt(distSq);
+        const push = (minDist - dist) / 2;
+        const nx = dx / dist;
+        const ny = dy / dist;
+        a.pos.x -= nx * push;
+        a.pos.y -= ny * push;
+        b.pos.x += nx * push;
+        b.pos.y += ny * push;
+      } else {
+        // Exact overlap — nudge one arbitrarily so the next pass can resolve.
+        b.pos.x += minDist;
+      }
+    }
+  }
+
+  // Guard vs caravan — the caravan follows its road, so only the guard moves.
+  for (const c of caravans) {
+    if (!c.alive) continue;
+    for (const g of guards) {
+      if (!g.alive) continue;
+      const dx = g.pos.x - c.pos.x;
+      const dy = g.pos.y - c.pos.y;
+      const distSq = dx * dx + dy * dy;
+      const minDist = g.radius + c.radius;
+      if (distSq >= minDist * minDist) continue;
+      if (distSq > 0.0001) {
+        const dist = Math.sqrt(distSq);
+        const overlap = minDist - dist;
+        g.pos.x += (dx / dist) * overlap;
+        g.pos.y += (dy / dist) * overlap;
+      } else {
+        g.pos.x += minDist;
+      }
+    }
+  }
+}
 
 // Wave spawning system
 export function spawnWave(wave, world) {

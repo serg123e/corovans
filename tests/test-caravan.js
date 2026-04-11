@@ -1,6 +1,6 @@
 // Tests for Caravan, Guard, and wave spawning
 
-import { Caravan, CaravanType, Guard, spawnWave } from '../js/caravan.js';
+import { Caravan, CaravanType, Guard, spawnWave, resolveGuardCollisions } from '../js/caravan.js';
 import { Vec2, CONST } from '../js/utils.js';
 import { World } from '../js/world.js';
 
@@ -179,6 +179,49 @@ class MockWorld {
   assert(endDist < startDist, 'Guard moves closer to player during chase');
 }
 
+// --- Melee guard keeps a standoff distance from the player ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.DONKEY, world);
+  c.pos = new Vec2(400, 300);
+  const g = new Guard(420, 300, c);
+  g.state = 'chase';
+
+  const playerPos = new Vec2(500, 300);
+  const dt = 1 / 60;
+  // Run long enough to settle on the standoff ring.
+  for (let i = 0; i < 300; i++) {
+    g.update(dt, playerPos);
+  }
+
+  const finalDist = g.pos.dist(playerPos);
+  const minStandoff = g.radius + CONST.PLAYER_RADIUS;
+  const attackReach = CONST.GUARD_ATTACK_RANGE + CONST.PLAYER_RADIUS;
+  assert(finalDist > minStandoff, 'Guard stops outside the player body');
+  assert(finalDist < attackReach, 'Guard stays close enough to attack');
+}
+
+// --- Guard keeps chasing even when its caravan is destroyed ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.DONKEY, world);
+  c.pos = new Vec2(400, 300);
+  const g = new Guard(400, 300, c);
+
+  // Kill the caravan. Put the player far away (beyond normal chase range).
+  c.alive = false;
+  const playerPos = new Vec2(400 + CONST.GUARD_CHASE_RANGE + 200, 300);
+
+  const startDist = g.pos.dist(playerPos);
+  const dt = 1 / 60;
+  for (let i = 0; i < 120; i++) {
+    g.update(dt, playerPos);
+  }
+
+  assert(g.state === 'chase', 'Guard stays in chase after its caravan dies');
+  assert(g.pos.dist(playerPos) < startDist, 'Guard closes distance to player even without a caravan');
+}
+
 // --- Guard returns when player is too far ---
 {
   const world = new MockWorld();
@@ -307,6 +350,53 @@ class MockWorld {
     const dist = caravans[0].pos.dist(caravans[1].pos);
     assert(dist > 20, 'Caravans have staggered start positions');
   }
+}
+
+// --- resolveGuardCollisions separates overlapping guards ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.DONKEY, world);
+  c.pos = new Vec2(0, 0);
+  c.alive = false; // disable caravan-vs-guard push so only the guard pass runs
+  const g1 = new Guard(100, 100, c);
+  const g2 = new Guard(105, 100, c); // clearly inside g1 + g2 radius sum
+
+  const before = g1.pos.dist(g2.pos);
+  resolveGuardCollisions([g1, g2], [c]);
+  const after = g1.pos.dist(g2.pos);
+  const minDist = g1.radius + g2.radius;
+  assert(before < minDist, 'Setup: guards start overlapping');
+  assertApprox(after, minDist, 'Guards separated to exactly radius sum');
+}
+
+// --- resolveGuardCollisions pushes guard out of its caravan ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.WAGON, world);
+  c.pos = new Vec2(200, 200);
+  const g = new Guard(200, 200, c); // dead center
+  g.pos = new Vec2(200, 200);
+
+  resolveGuardCollisions([g], [c]);
+  const dist = g.pos.dist(c.pos);
+  assert(dist >= g.radius + c.radius - 0.1, 'Guard pushed out of caravan body');
+}
+
+// --- resolveGuardCollisions skips dead guards and caravans ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.DONKEY, world);
+  c.pos = new Vec2(0, 0);
+  c.alive = false;
+  const g1 = new Guard(100, 100, c);
+  const g2 = new Guard(100, 100, c);
+  g1.alive = false;
+
+  const p1 = new Vec2(g1.pos.x, g1.pos.y);
+  const p2 = new Vec2(g2.pos.x, g2.pos.y);
+  resolveGuardCollisions([g1, g2], [c]);
+  assert(g1.pos.x === p1.x && g1.pos.y === p1.y, 'Dead guard is not moved');
+  assert(g2.pos.x === p2.x && g2.pos.y === p2.y, 'Guard paired with dead guard is not moved');
 }
 
 // --- Summary ---

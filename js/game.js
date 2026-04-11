@@ -1,14 +1,14 @@
 // Game - main game class with fixed-timestep loop and state machine
 
-import { CONST } from './utils.js';
+import { Vec2, CONST } from './utils.js';
 import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Player } from './player.js';
-import { spawnWave } from './caravan.js';
+import { spawnWave, resolveGuardCollisions } from './caravan.js';
 import { performAttack, Projectile } from './combat.js';
 import { spawnLoot } from './loot.js';
 import { UI } from './ui.js';
-import { spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, updateParticles, renderParticles } from './particles.js';
+import { spawnDust, spawnHitSparks, spawnGoldSparkle, spawnDeathBurst, spawnSlash, updateParticles, renderParticles } from './particles.js';
 import { GameAudio } from './audio.js';
 
 // Game states
@@ -209,6 +209,12 @@ export class Game {
   _updatePlaying(dt) {
     // Update player
     if (this.player) {
+      // Let input resolve touch-based movement direction relative to the
+      // player's current screen position.
+      this.input.setPlayerScreen(
+        this.player.pos.x - this.camera.x,
+        this.player.pos.y - this.camera.y
+      );
       this.player.update(dt, this.input, this.world.width, this.world.height);
 
       // Check for player death
@@ -218,35 +224,56 @@ export class Game {
       }
 
       // Handle player attack
-      if (this.input.wantsAttack() && this.player.tryAttack()) {
-        this.audio.playAttack();
-        const hits = performAttack(this.player, this.guards, this.caravans);
-        for (const hit of hits) {
-          // Floating damage number
-          this.addFloatingText(
-            hit.target.pos.x, hit.target.pos.y - 20,
-            `-${hit.damage}`, '#fff', 16
-          );
-
-          // Hit sparks and sound
-          spawnHitSparks(this.particles, hit.target.pos.x, hit.target.pos.y);
-          this.audio.playHit();
-          this.camera.shake(3, 0.1);
-
-          // Flash white on hit
-          hit.target.flashTimer = 0.1;
-
-          // Check if guard died
-          if (hit.type === 'guard' && !hit.target.alive) {
-            spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
-            this.audio.playGuardDeath();
-            this._checkCaravanLoot(hit.target.caravan);
+      if (this.input.wantsAttack()) {
+        // Click / tap reaims the player toward the cursor before attacking.
+        // Space uses whatever facing the player already has (from movement).
+        if (this.input.mouse.clicked) {
+          const world = this.camera.screenToWorld(this.input.mouse.x, this.input.mouse.y);
+          const dx = world.x - this.player.pos.x;
+          const dy = world.y - this.player.pos.y;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0.01) {
+            this.player.facing = new Vec2(dx / len, dy / len);
           }
+        }
+        if (this.player.tryAttack()) {
+          this.audio.playAttack();
+          spawnSlash(
+            this.particles,
+            this.player.pos.x,
+            this.player.pos.y,
+            this.player.facing.x,
+            this.player.facing.y,
+            this.player.radius + this.player.attackRange
+          );
+          const hits = performAttack(this.player, this.guards, this.caravans);
+          for (const hit of hits) {
+            // Floating damage number
+            this.addFloatingText(
+              hit.target.pos.x, hit.target.pos.y - 20,
+              `-${hit.damage}`, '#fff', 16
+            );
 
-          // Check if caravan was destroyed directly
-          if (hit.type === 'caravan' && !hit.target.alive) {
-            spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
-            this._checkCaravanLoot(hit.target);
+            // Hit sparks and sound
+            spawnHitSparks(this.particles, hit.target.pos.x, hit.target.pos.y);
+            this.audio.playHit();
+            this.camera.shake(3, 0.1);
+
+            // Flash white on hit
+            hit.target.flashTimer = 0.1;
+
+            // Check if guard died
+            if (hit.type === 'guard' && !hit.target.alive) {
+              spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
+              this.audio.playGuardDeath();
+              this._checkCaravanLoot(hit.target.caravan);
+            }
+
+            // Check if caravan was destroyed directly
+            if (hit.type === 'caravan' && !hit.target.alive) {
+              spawnDeathBurst(this.particles, hit.target.pos.x, hit.target.pos.y);
+              this._checkCaravanLoot(hit.target);
+            }
           }
         }
       }
@@ -275,6 +302,8 @@ export class Game {
             this.projectiles.push(proj);
           } else {
             this.player.takeDamage(result.damage);
+            // Turn toward the attacker so a counter-attack lands naturally.
+            this.player.face(guard.pos.x - this.player.pos.x, guard.pos.y - this.player.pos.y);
             this.waveDamageTaken += result.damage;
             this.player.flashTimer = 0.12;
             this.camera.shake(4, 0.15);
@@ -288,6 +317,10 @@ export class Game {
       }
     }
 
+    // Separate overlapping guards and push them out of caravans so sprites
+    // don't stack on the same pixel.
+    resolveGuardCollisions(this.guards, this.caravans);
+
     // Update projectiles
     if (this.player) {
       for (let i = this.projectiles.length - 1; i >= 0; i--) {
@@ -295,6 +328,8 @@ export class Game {
         const hit = proj.update(dt, this.player.pos, this.player.radius);
         if (hit) {
           this.player.takeDamage(proj.damage);
+          // Face back along the arrow's path toward the shooter.
+          this.player.face(-proj.dir.x, -proj.dir.y);
           this.waveDamageTaken += proj.damage;
           this.player.flashTimer = 0.12;
           this.camera.shake(3, 0.12);
@@ -486,8 +521,9 @@ export class Game {
       }
     }
 
-    // Keyboard shortcut to start next wave
-    if (this.input.wasPressed('Space') || this.input.wasPressed('Enter')) {
+    // Keyboard shortcut to start next wave (Enter only — Space is the attack
+    // key and would close the shop by accident).
+    if (this.input.wasPressed('Enter')) {
       this.startNextWave();
       this.input.endFrame(); // consume input so it doesn't trigger attack on first frame
     }
