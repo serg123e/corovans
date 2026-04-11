@@ -308,7 +308,7 @@ function assert(condition, message) {
   const origDmg = player.damage;
   const origMax = player.maxHp;
   ui.pickCard(0, player);
-  assert(player.damage === origDmg + 12, 'glassCannon: +12 damage');
+  assert(player.damage === origDmg + 8, 'glassCannon: +8 damage');
   assert(player.maxHp === origMax - 15, 'glassCannon: -15 maxHp');
 }
 

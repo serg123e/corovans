@@ -755,9 +755,13 @@ export function spawnWave(wave, world, rng = null) {
   const isBossWave = wave > 0 && wave % 5 === 0;
   const rand = randFn(rng);
 
-  // Scaling: more caravans as waves progress
-  // Wave 1: 1, Wave 2: 1, Wave 3: 2, Wave 4: 2, Wave 5 (boss): 1 boss + 1 normal, etc.
-  let caravanCount = Math.min(1 + Math.floor(wave / 2), 6);
+  // Scaling: more caravans as waves progress. Flattened starting at wave 6
+  // so the transition out of "boss-wave-5" doesn't double-ramp caravan
+  // count AND armored density in the same step — that combo kept showing
+  // up as a 10%+ mortality spike at wave 6 in the smart-policy sims.
+  let caravanCount = wave <= 5
+    ? Math.min(1 + Math.floor(wave / 2), 6)
+    : Math.min(Math.floor(wave / 2), 6);
 
   if (isBossWave) {
     // Boss wave: spawn one boss caravan + fewer regular caravans

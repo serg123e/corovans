@@ -156,12 +156,12 @@ export const CARDS = [
   {
     id: 'glassCannon',
     label: 'Берсерк',
-    desc: '+12 урона, −15 макс. HP',
+    desc: '+8 урона, −15 макс. HP',
     icon: '💀',
     rarity: Rarity.RARE,
     stackable: true,
     apply: (p, scale = 1) => {
-      p.damage += 12 * scale;
+      p.damage += 8 * scale;
       p.maxHp = Math.max(10, p.maxHp - Math.round(15 * scale));
       p.hp = Math.min(p.hp, p.maxHp);
     },
