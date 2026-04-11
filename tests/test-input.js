@@ -132,6 +132,52 @@ function assertApprox(a, b, msg, eps = 0.001) {
   assert(input.touch.x === 100 && input.touch.y === 100, 'Second touch ignored while first is active');
 }
 
+// --- Holding LMB walks toward cursor ---
+{
+  const canvas = makeCanvas();
+  const input = new Input(canvas);
+  input.setPlayerScreen(400, 300);
+  input.mouse.x = 500;
+  input.mouse.y = 300;
+
+  canvas.listeners.mousedown({ button: 0, preventDefault() {} });
+  const move = input.getMovement();
+  assertApprox(move.x, 1, 'Held LMB moves player right toward cursor');
+  assertApprox(move.y, 0, 'Held LMB keeps y at zero when aligned');
+}
+
+// --- Holding RMB walks toward cursor but does NOT attack ---
+{
+  const canvas = makeCanvas();
+  const input = new Input(canvas);
+  input.setPlayerScreen(100, 100);
+  input.mouse.x = 100;
+  input.mouse.y = 200;
+
+  canvas.listeners.mousedown({ button: 2, preventDefault() {} });
+  const move = input.getMovement();
+  assertApprox(move.x, 0, 'Held RMB moves along y only');
+  assertApprox(move.y, 1, 'Held RMB moves player down toward cursor');
+  assert(!input.wantsAttack(), 'Right mouse button does not trigger attack');
+
+  canvas.listeners.mouseup({ button: 2, preventDefault() {} });
+  const stopped = input.getMovement();
+  assert(stopped.x === 0 && stopped.y === 0, 'Releasing RMB stops movement');
+}
+
+// --- Mouse hold within dead zone = no movement ---
+{
+  const canvas = makeCanvas();
+  const input = new Input(canvas);
+  input.setPlayerScreen(400, 300);
+  input.mouse.x = 405;
+  input.mouse.y = 302;
+
+  canvas.listeners.mousedown({ button: 0, preventDefault() {} });
+  const move = input.getMovement();
+  assert(move.x === 0 && move.y === 0, 'Dead zone suppresses tiny mouse hold drift');
+}
+
 // --- Keyboard still overrides touch when both provide input ---
 {
   const canvas = makeCanvas();

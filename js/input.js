@@ -10,7 +10,7 @@ export class Input {
   constructor(canvas) {
     this.keys = {};
     this.keysPressed = {};  // true only on the frame the key was first pressed
-    this.mouse = { x: 0, y: 0, down: false, clicked: false };
+    this.mouse = { x: 0, y: 0, down: false, rightDown: false, clicked: false };
     this.touch = { active: false, x: 0, y: 0 };
     this._canvas = canvas;
 
@@ -50,13 +50,24 @@ export class Input {
       if (e.button === 0) {
         this.mouse.down = true;
         this.mouse.clicked = true;
+      } else if (e.button === 2) {
+        this.mouse.rightDown = true;
+        // Right-click is hold-to-move only; swallow the browser menu.
+        e.preventDefault();
       }
     };
 
     this._onMouseUp = (e) => {
       if (e.button === 0) {
         this.mouse.down = false;
+      } else if (e.button === 2) {
+        this.mouse.rightDown = false;
       }
+    };
+
+    this._onContextMenu = (e) => {
+      // Block the native context menu so RMB can be used for movement.
+      e.preventDefault();
     };
 
     this._onTouchStart = (e) => {
@@ -126,6 +137,7 @@ export class Input {
     canvas.addEventListener('mousemove', this._onMouseMove);
     canvas.addEventListener('mousedown', this._onMouseDown);
     canvas.addEventListener('mouseup', this._onMouseUp);
+    canvas.addEventListener('contextmenu', this._onContextMenu);
     canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
     canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
     canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
@@ -183,6 +195,16 @@ export class Input {
         return { x: dx / d, y: dy / d };
       }
     }
+    // Held mouse button (left or right) = walk toward cursor, same semantics
+    // as holding a touch. Clicks and attacks are handled separately.
+    if (this.mouse.down || this.mouse.rightDown) {
+      const dx = this.mouse.x - this._playerScreenX;
+      const dy = this.mouse.y - this._playerScreenY;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > TOUCH_MOVE_DEADZONE_PX) {
+        return { x: dx / d, y: dy / d };
+      }
+    }
     return { x: 0, y: 0 };
   }
 
@@ -196,6 +218,7 @@ export class Input {
     this._canvas.removeEventListener('mousemove', this._onMouseMove);
     this._canvas.removeEventListener('mousedown', this._onMouseDown);
     this._canvas.removeEventListener('mouseup', this._onMouseUp);
+    this._canvas.removeEventListener('contextmenu', this._onContextMenu);
     this._canvas.removeEventListener('touchstart', this._onTouchStart);
     this._canvas.removeEventListener('touchmove', this._onTouchMove);
     this._canvas.removeEventListener('touchend', this._onTouchEnd);
