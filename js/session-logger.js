@@ -84,9 +84,9 @@ export function uploadSession(session) {
     .catch(() => false);
 }
 
-// POST every session currently in localStorage. Used by the Shift+U
-// menu hotkey to backfill the server after offline play. Returns a
-// promise resolving to { sent, failed }.
+// POST every session currently in localStorage. Used by the U menu
+// hotkey to backfill the server after offline play. Returns a promise
+// resolving to { sent, failed }.
 export function uploadAllLocal() {
   const sessions = safeRead();
   if (!sessions.length) return Promise.resolve({ sent: 0, failed: 0 });

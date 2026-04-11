@@ -30,6 +30,7 @@ js/
     policies.js       - AIPolicy base + GreedyPolicy / SmartPolicy / RandomCardPolicy / PreferencePolicy / RunnerPolicy
     simulator.js      - Headless Simulator: runs full sessions with an AIPolicy, no render/audio
     run.js            - Node CLI runner: batches of sims with aggregate summary + JSON export
+    analyze.js        - Node CLI analyzer: reads sim exports or live telemetry sessions, prints balance metrics + A/B diff
   utils.js          - Vec2 class, collision helpers, math utilities, game constants (CONST)
 tests/
   test-vector.js         - Vec2 and collision utility tests
@@ -62,7 +63,8 @@ Common operations live in the `Makefile` — `make help` lists them. Shortcuts: 
   - A/B compare: `node js/sim/run.js --policy preference --prefer thorns --compare "preference --avoid thorns"` runs a second batch and prints the delta. When `--seed` is set, the alt arm's seed is offset so the two batches aren't traversing identical random sequences.
   - Policies: `greedy` (baseline, median wave ~4, dies fast), `smart` (baseline for late-game analysis, median wave ~11: arrow dodging, swarm retreat, threat-weighted targeting), `preference` (forced card build), `random-cards`, `runner`.
   - Combo scan: `node js/sim/run.js --policy smart --combo-scan --count 20 --max-waves 20 [--combo-stack 3] [--combo-cards id,id] [--combo-top 15] [--out combo.json]` runs every unordered card pair with pre-baked stacks and prints Δwave vs baseline. At count=20/pair, default 12-card sweep = 1340 sims ≈ 4 minutes on smart.
-- Start telemetry sink: `node scripts/telemetry-server.js` (port 12000, writes to `telemetry/sessions/`). Expose via `ngrok http --url=rapid-mayfly-intense.ngrok-free.app 12000` — the client in `js/session-logger.js` POSTs finished sessions to that URL automatically. Menu hotkey Shift+U backfills all cached localStorage sessions.
+- Start telemetry sink: `node scripts/telemetry-server.js` (port 12000, writes to `telemetry/sessions/`). Expose via `ngrok http --url=rapid-mayfly-intense.ngrok-free.app 12000` — the client in `js/session-logger.js` POSTs finished sessions to that URL automatically. Menu hotkey U backfills all cached localStorage sessions.
+- Analyze sessions: `node js/sim/analyze.js <path> [--compare <path>] [--top N]` — prints wave percentiles, card pickrate, card impact (Δwave), damage-by-source, death causes, per-wave mortality. `<path>` auto-detects format: directory of session JSONs (`telemetry/sessions/`), sim run.js export, or browser downloadExport. `--compare` diffs two datasets (e.g. real-player logs vs SmartPolicy sim).
 - No linter or formatter configured
 
 ## Conventions

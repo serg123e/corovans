@@ -30,6 +30,11 @@ export class Input {
         this.keysPressed[e.code] = true;
       }
       this.keys[e.code] = true;
+      // Debug: log telemetry/export hotkeys so we can confirm the event
+      // actually reaches the window listener (e.g. rule out focus issues).
+      if (e.code === 'KeyL' || e.code === 'KeyU') {
+        console.log(`[input] keydown ${e.code} shift=${e.shiftKey} target=${e.target && e.target.tagName}`);
+      }
       // Prevent default for game keys
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
         e.preventDefault();

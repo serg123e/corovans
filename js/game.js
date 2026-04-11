@@ -289,7 +289,9 @@ export class Game {
     // Log export shortcuts — only on the main menu so they don't clash
     // with gameplay input. L downloads everything, Shift+L clears.
     if (this.input.wasPressed('KeyL')) {
-      if (this.input.keys['ShiftLeft'] || this.input.keys['ShiftRight']) {
+      const shift = this.input.keys['ShiftLeft'] || this.input.keys['ShiftRight'];
+      console.log(`[menu] KeyL pressed (shift=${!!shift}) — ${shift ? 'clearing sessions' : 'downloading export'}`);
+      if (shift) {
         clearAllSessions();
       } else {
         this.logger.downloadExport();
@@ -298,10 +300,13 @@ export class Game {
       return;
     }
 
-    // Shift+U: backfill every session from localStorage to the
-    // telemetry server (for sessions collected while offline).
-    if (this.input.wasPressed('KeyU') && (this.input.keys['ShiftLeft'] || this.input.keys['ShiftRight'])) {
-      uploadAllLocal().then((r) => console.log(`[telemetry] backfill: sent=${r.sent} failed=${r.failed}`));
+    // U: backfill every session from localStorage to the telemetry
+    // server (for sessions collected while offline).
+    if (this.input.wasPressed('KeyU')) {
+      console.log('[menu] KeyU pressed — starting telemetry backfill');
+      uploadAllLocal()
+        .then((r) => console.log(`[telemetry] backfill: sent=${r.sent} failed=${r.failed}`))
+        .catch((err) => console.error('[telemetry] backfill failed:', err));
       this.input.endFrame();
       return;
     }

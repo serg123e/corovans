@@ -1,4 +1,4 @@
-.PHONY: help test sim sim-greedy combo telemetry ngrok version play clean-sessions
+.PHONY: help test sim sim-greedy combo analyze telemetry ngrok version play clean-sessions
 
 help:
 	@echo "Available targets:"
@@ -6,6 +6,7 @@ help:
 	@echo "  sim            Smart AI batch (300 runs, seed 42, 30 waves)"
 	@echo "  sim-greedy     Greedy AI batch (300 runs, seed 42, 20 waves)"
 	@echo "  combo          Combo-pair scan on smart policy (≈4 min)"
+	@echo "  analyze        Analyze uploaded telemetry sessions"
 	@echo "  telemetry      Start local telemetry sink on :12000"
 	@echo "  ngrok          Expose telemetry on the fixed ngrok URL"
 	@echo "  version        Regenerate version.json from git HEAD"
@@ -32,6 +33,9 @@ sim-greedy:
 
 combo:
 	node js/sim/run.js --policy smart --combo-scan --count 20 --max-waves 20 --seed 42 --out combo.json
+
+analyze:
+	node js/sim/analyze.js telemetry/sessions
 
 telemetry:
 	node scripts/telemetry-server.js
