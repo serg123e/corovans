@@ -132,7 +132,7 @@ function assert(condition, message) {
   assert(ui.draftOffer.length === 1, 'pickCard(paid): offer untouched on fail');
 }
 
-// --- getCardCost returns the right price per rarity ---
+// --- getCardCost returns the right price per rarity (no stacks owned) ---
 {
   const ui = new UI();
   const common = CARDS.find(c => c.rarity === 'common');
@@ -141,6 +141,46 @@ function assert(condition, message) {
   assert(ui.getCardCost(common) === 15, 'getCardCost: common = 15');
   assert(ui.getCardCost(uncommon) === 40, 'getCardCost: uncommon = 40');
   assert(ui.getCardCost(rare) === 80, 'getCardCost: rare = 80');
+}
+
+// --- getCardCost scales with owned stacks (1x, 2x, 3x, 4x...) ---
+{
+  const ui = new UI();
+  const card = CARDS.find(c => c.id === 'damage');
+  assert(ui.getCardCost(card) === 15, 'getCardCost: 0 stacks = base');
+  ui.cardCounts[card.id] = 1;
+  assert(ui.getCardCost(card) === 30, 'getCardCost: 1 stack = base × 2');
+  ui.cardCounts[card.id] = 2;
+  assert(ui.getCardCost(card) === 45, 'getCardCost: 2 stacks = base × 3');
+  ui.cardCounts[card.id] = 3;
+  assert(ui.getCardCost(card) === 60, 'getCardCost: 3 stacks = base × 4');
+}
+
+// --- stack diminishing returns on additive cards ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'damage');
+  const base = player.damage;
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  assert(player.damage === base + 5, 'DR: 1st damage = +5 (full)');
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  assert(player.damage === base + 5 + 3, 'DR: 2nd damage = +3 (60%)');
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  assert(Math.abs(player.damage - (base + 5 + 3 + 1.5)) < 0.0001, 'DR: 3rd damage = +1.5 (30%)');
+}
+
+// --- stack diminishing returns on regen (late-ration smooth) ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  const card = CARDS.find(c => c.id === 'regen');
+  const base = player.regenPerSec;
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  ui.draftOffer = [card]; ui.pickCard(0, player);
+  assert(Math.abs(player.regenPerSec - (base + 1 + 0.6 + 0.3)) < 0.0001,
+    'DR: regen stacks to base + 1 + 0.6 + 0.3');
 }
 
 // --- pickCard invalid index ---

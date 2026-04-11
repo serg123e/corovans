@@ -33,8 +33,20 @@ const RARITY_COST = {
   [Rarity.RARE]: 80,
 };
 
-// Card pool. Each card has an apply(player) that mutates player stats.
-// `stackable: false` cards drop out of the pool once taken.
+// Diminishing returns on stacked cards. Index = how many copies the player
+// already owns BEFORE the current pick; 0 = first stack (full effect).
+// Hard cap past index 4 so nth-copy picks still feel non-zero.
+const STACK_SCALE = [1, 0.6, 0.3, 0.15, 0.1];
+export function stackScale(stackIndex) {
+  const i = Math.max(0, stackIndex | 0);
+  return STACK_SCALE[Math.min(i, STACK_SCALE.length - 1)];
+}
+
+// Card pool. Each card has an apply(player, scale) that mutates player
+// stats. `scale` comes from stackScale(ownedCountBeforePick); cards that
+// care about stacking multiply their effect by it (additive stats trivially,
+// multiplicative stats via (1 − base * scale)). `stackable: false` cards
+// drop out of the pool once taken.
 export const CARDS = [
   // --- Stat cards (common, multi-take) ---
   {
@@ -44,7 +56,7 @@ export const CARDS = [
     icon: '⚔',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.damage += 5; },
+    apply: (p, scale = 1) => { p.damage += 5 * scale; },
   },
   {
     id: 'maxHp',
@@ -53,7 +65,11 @@ export const CARDS = [
     icon: '❤',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.maxHp += 25; p.hp += 25; },
+    apply: (p, scale = 1) => {
+      const bonus = Math.round(25 * scale);
+      p.maxHp += bonus;
+      p.hp += bonus;
+    },
   },
   {
     id: 'speed',
@@ -62,9 +78,9 @@ export const CARDS = [
     icon: '👢',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => {
-      p.speed += 15;
-      p.attackCooldown = Math.max(0.12, p.attackCooldown * 0.94);
+    apply: (p, scale = 1) => {
+      p.speed += 15 * scale;
+      p.attackCooldown = Math.max(0.12, p.attackCooldown * (1 - 0.06 * scale));
     },
   },
   {
@@ -74,7 +90,7 @@ export const CARDS = [
     icon: '🗡',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.attackRange += 2; },
+    apply: (p, scale = 1) => { p.attackRange += 2 * scale; },
   },
   {
     id: 'cooldown',
@@ -83,7 +99,9 @@ export const CARDS = [
     icon: '⏱',
     rarity: Rarity.COMMON,
     stackable: true,
-    apply: (p) => { p.attackCooldown = Math.max(0.12, p.attackCooldown * 0.88); },
+    apply: (p, scale = 1) => {
+      p.attackCooldown = Math.max(0.12, p.attackCooldown * (1 - 0.12 * scale));
+    },
   },
   // --- Mechanical cards (uncommon) ---
   {
@@ -93,7 +111,7 @@ export const CARDS = [
     icon: '🩸',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.lifestealPct += 0.07; },
+    apply: (p, scale = 1) => { p.lifestealPct += 0.07 * scale; },
   },
   {
     id: 'magnet',
@@ -102,7 +120,7 @@ export const CARDS = [
     icon: '🧲',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.magnetRangeMul += 0.5; },
+    apply: (p, scale = 1) => { p.magnetRangeMul += 0.5 * scale; },
   },
   {
     id: 'thorns',
@@ -111,7 +129,7 @@ export const CARDS = [
     icon: '🌵',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.thornsPct += 0.25; },
+    apply: (p, scale = 1) => { p.thornsPct += 0.25 * scale; },
   },
   {
     id: 'regen',
@@ -120,7 +138,7 @@ export const CARDS = [
     icon: '💚',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => { p.regenPerSec += 1; },
+    apply: (p, scale = 1) => { p.regenPerSec += 1 * scale; },
   },
   {
     id: 'dashCooldown',
@@ -129,9 +147,9 @@ export const CARDS = [
     icon: '⚡',
     rarity: Rarity.UNCOMMON,
     stackable: true,
-    apply: (p) => {
-      p.dashCooldownMax = Math.max(0.1, p.dashCooldownMax * 0.75);
-      p.iframeBonus += 0.05;
+    apply: (p, scale = 1) => {
+      p.dashCooldownMax = Math.max(0.1, p.dashCooldownMax * (1 - 0.25 * scale));
+      p.iframeBonus += 0.05 * scale;
     },
   },
   // --- Rare cards ---
@@ -142,9 +160,9 @@ export const CARDS = [
     icon: '💀',
     rarity: Rarity.RARE,
     stackable: true,
-    apply: (p) => {
-      p.damage += 12;
-      p.maxHp = Math.max(10, p.maxHp - 15);
+    apply: (p, scale = 1) => {
+      p.damage += 12 * scale;
+      p.maxHp = Math.max(10, p.maxHp - Math.round(15 * scale));
       p.hp = Math.min(p.hp, p.maxHp);
     },
   },
@@ -276,9 +294,14 @@ export class UI {
     this._paidOfferWave = -1;
   }
 
+  // Shop cost scales with how many stacks the player already owns: each
+  // subsequent copy costs +100% more (1x, 2x, 3x, 4x ...). Counters
+  // combo-snowball where the same card could be bought cheaply on repeat.
   getCardCost(card) {
     if (!card) return 0;
-    return RARITY_COST[card.rarity] || 0;
+    const base = RARITY_COST[card.rarity] || 0;
+    const owned = this.cardCounts[card.id] || 0;
+    return base * (1 + owned);
   }
 
   getRerollCost() {
@@ -308,8 +331,9 @@ export class UI {
       player.gold -= cost;
     }
 
-    card.apply(player);
-    this.cardCounts[card.id] = (this.cardCounts[card.id] || 0) + 1;
+    const owned = this.cardCounts[card.id] || 0;
+    card.apply(player, stackScale(owned));
+    this.cardCounts[card.id] = owned + 1;
 
     if (this.draftMode === DraftMode.PAID) {
       // Remove the card from the shop offer so it can't be bought twice in

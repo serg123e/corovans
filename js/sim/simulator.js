@@ -30,7 +30,7 @@ import { Shop } from '../shop.js';
 import { spawnWave, resolveGuardCollisions } from '../caravan.js';
 import { performAttack, Projectile } from '../combat.js';
 import { spawnLoot } from '../loot.js';
-import { UI, CARDS } from '../ui.js';
+import { UI, CARDS, stackScale } from '../ui.js';
 import { SessionLogger } from '../session-logger.js';
 import { CONST } from '../utils.js';
 import { makeRng } from '../rng.js';
@@ -101,13 +101,18 @@ export class Simulator {
 
     // Apply pre-baked starting cards. Unknown ids are ignored with a
     // warning to the logger so analysts can see something went wrong.
+    // Stack diminishing returns apply the same way as live-game picks so
+    // combo scans see realistic 3+3 scaling, not raw additive stacking.
+    const startStacks = {};
     for (const id of this.startCards) {
       const card = CARDS.find(c => c.id === id);
       if (!card) {
         console.warn(`[sim] unknown start card id: ${id}`);
         continue;
       }
-      card.apply(player);
+      const owned = startStacks[id] || 0;
+      card.apply(player, stackScale(owned));
+      startStacks[id] = owned + 1;
       // Don't count these as cardsPicked events — they're pre-bake, not
       // shop picks. They live in session.meta.startCards instead.
     }
