@@ -46,8 +46,15 @@ export class AIPolicy {
   decidePlaying(/* view */) {
     return { moveX: 0, moveY: 0, attack: false, dash: false };
   }
-  decideShop(/* view */) {
-    return { action: 'pick', index: 0 };
+  decideShop(view) {
+    if (!view.offer || view.offer.length === 0) return { action: 'skip' };
+    // Pick the cheapest affordable card, or skip if broke.
+    const costs = view.costs || [];
+    let best = -1;
+    for (let i = 0; i < view.offer.length; i++) {
+      if ((costs[i] || 0) <= view.gold) { best = i; break; }
+    }
+    return best >= 0 ? { action: 'pick', index: best } : { action: 'skip' };
   }
 }
 
@@ -128,13 +135,18 @@ export class GreedyPolicy extends AIPolicy {
   }
 
   decideShop(view) {
-    if (!view.offer || view.offer.length === 0) {
-      return { action: 'skip' };
+    if (!view.offer || view.offer.length === 0) return { action: 'skip' };
+    const costs = view.costs || [];
+    // Filter to affordable cards only.
+    const affordable = [];
+    for (let i = 0; i < view.offer.length; i++) {
+      if ((costs[i] || 0) <= view.gold) affordable.push(i);
     }
-    let idx = 0;
+    if (affordable.length === 0) return { action: 'skip' };
+    let idx = affordable[0];
     if (this.cardPick === 'random') {
       const rand = randFn(view.rng);
-      idx = Math.floor(rand() * view.offer.length);
+      idx = affordable[Math.floor(rand() * affordable.length)];
     }
     return { action: 'pick', index: idx };
   }
@@ -172,19 +184,19 @@ export class PreferencePolicy extends GreedyPolicy {
   }
 
   decideShop(view) {
-    if (!view.offer || view.offer.length === 0) {
-      return { action: 'skip' };
-    }
-    // 1. Highest-ranked preferred card present in the offer.
+    if (!view.offer || view.offer.length === 0) return { action: 'skip' };
+    const costs = view.costs || [];
+    const canAfford = (i) => (costs[i] || 0) <= view.gold;
+    // 1. Highest-ranked preferred card present and affordable.
     for (const id of this.prefer) {
       if (this.avoid.has(id)) continue;
-      const idx = view.offer.findIndex(c => c.id === id);
+      const idx = view.offer.findIndex((c, i) => c.id === id && canAfford(i));
       if (idx >= 0) return { action: 'pick', index: idx };
     }
-    // 2. First non-forbidden card.
-    const idx = view.offer.findIndex(c => !this.avoid.has(c.id));
+    // 2. First non-forbidden affordable card.
+    const idx = view.offer.findIndex((c, i) => !this.avoid.has(c.id) && canAfford(i));
     if (idx >= 0) return { action: 'pick', index: idx };
-    // 3. Everything forbidden — skip without picking.
+    // 3. Nothing affordable or everything forbidden — skip.
     return { action: 'skip' };
   }
 }
@@ -222,6 +234,10 @@ export class SmartPolicy extends AIPolicy {
     // standing still below medHpPct makes melee trades lose HP faster.
     this.lowHpPct = options.lowHpPct ?? 0.3;
     this.medHpPct = options.medHpPct ?? 0.7;
+    // HP threshold for arrow dodging. Above this fraction the AI ignores
+    // incoming arrows and charges through — prevents infinite kiting of
+    // archer clusters at full HP.
+    this.arrowDodgeHpPct = options.arrowDodgeHpPct ?? 0.7;
     // Arrow dodge window. At PROJECTILE_SPEED=200, 90px ≈ 0.45s of
     // reaction time before the hit lands — enough room to dash or step.
     this.projectileWarnDist = options.projectileWarnDist ?? 90;
@@ -240,13 +256,12 @@ export class SmartPolicy extends AIPolicy {
 
     const threatGuard = this._mostThreateningGuard(p, view.guards);
 
-    // 1. Arrow dodge — highest priority for movement, a single archer can
-    // strip ~6hp. Sidestep perpendicular to the arrow's direction; dash
-    // when ready so we phase through on iframes. We still swing if a melee
-    // target is already in reach — otherwise an archer volley shuts down
-    // our whole DPS window during each wave.
+    // 1. Arrow dodge — sidestep perpendicular to an incoming arrow; dash
+    // when ready. But only below the confident HP threshold — at high HP
+    // it's better to tank the ~6 damage and keep closing the gap rather
+    // than endlessly kiting a cluster of archers.
     const incoming = this._incomingProjectile(view.projectiles, p);
-    if (incoming) {
+    if (incoming && hpPct < this.arrowDodgeHpPct) {
       const perpX = -incoming.dir.y;
       const perpY = incoming.dir.x;
       const canDash = p.dashCooldownTimer <= 0;
@@ -347,14 +362,23 @@ export class SmartPolicy extends AIPolicy {
   }
 
   decideShop(view) {
-    if (!view.offer || view.offer.length === 0) {
-      return { action: 'skip' };
-    }
+    if (!view.offer || view.offer.length === 0) return { action: 'skip' };
+    const costs = view.costs || [];
+    const canAfford = (i) => (costs[i] || 0) <= view.gold;
+    // Pick the highest-priority affordable card.
     for (const id of this.preferCards) {
-      const idx = view.offer.findIndex(c => c.id === id);
+      const idx = view.offer.findIndex((c, i) => c.id === id && canAfford(i));
       if (idx >= 0) return { action: 'pick', index: idx };
     }
-    return { action: 'pick', index: 0 };
+    // Fallback: cheapest affordable card.
+    let best = -1, bestCost = Infinity;
+    for (let i = 0; i < view.offer.length; i++) {
+      if (canAfford(i) && (costs[i] || 0) < bestCost) {
+        bestCost = costs[i] || 0;
+        best = i;
+      }
+    }
+    return best >= 0 ? { action: 'pick', index: best } : { action: 'skip' };
   }
 
   // Return the closest projectile that is both near the player AND aimed
@@ -530,7 +554,12 @@ export class RunnerPolicy extends AIPolicy {
   }
 
   decideShop(view) {
-    return { action: 'pick', index: 0 };
+    if (!view.offer || view.offer.length === 0) return { action: 'skip' };
+    const costs = view.costs || [];
+    for (let i = 0; i < view.offer.length; i++) {
+      if ((costs[i] || 0) <= view.gold) return { action: 'pick', index: i };
+    }
+    return { action: 'skip' };
   }
 }
 

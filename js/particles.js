@@ -101,14 +101,18 @@ export function spawnGoldSparkle(particles, x, y) {
 }
 
 // Visual slash arc that sweeps in front of the player on attack.
+// When `fullArc` is true (wideArc card), draws a full 360° ring instead.
 // Implements the same update(dt)/render(renderer)/alive shape as Particle so
 // it can live in the same particles array.
 export class SlashEffect {
-  constructor(x, y, angle, reach) {
+  constructor(x, y, angle, reach, fullArc = false, color = '#ffffff', glow = '#ffeeaa') {
     this.x = x;
     this.y = y;
     this.angle = angle;
     this.reach = reach;
+    this.fullArc = fullArc;
+    this.color = color;
+    this.glow = glow;
     this.life = 0.18;
     this.maxLife = 0.18;
     this.alive = true;
@@ -124,21 +128,31 @@ export class SlashEffect {
     if (!this.alive) return;
     const t = 1 - this.life / this.maxLife; // 0 → 1
     const alpha = 1 - t;
-    const halfArc = Math.PI * 0.55;
-    const swing = halfArc * (0.35 + 0.65 * t);
-    const start = this.angle - swing;
-    const end = this.angle + swing;
     renderer.setAlpha(alpha);
-    renderer.strokeArc(this.x, this.y, this.reach, start, end, '#ffffff', 5);
-    renderer.strokeArc(this.x, this.y, this.reach - 3, start, end, '#ffeeaa', 2);
+
+    if (this.fullArc) {
+      // Full 360° ring that expands outward
+      const r = this.reach * (0.7 + 0.3 * t);
+      renderer.strokeCircle(this.x, this.y, r, this.color, 5);
+      renderer.strokeCircle(this.x, this.y, r - 3, this.glow, 2);
+    } else {
+      const halfArc = Math.PI * 0.55;
+      const swing = halfArc * (0.35 + 0.65 * t);
+      const start = this.angle - swing;
+      const end = this.angle + swing;
+      renderer.strokeArc(this.x, this.y, this.reach, start, end, this.color, 5);
+      renderer.strokeArc(this.x, this.y, this.reach - 3, start, end, this.glow, 2);
+    }
+
     renderer.resetAlpha();
   }
 }
 
-// Spawn a slash effect in the direction (facingX, facingY) at distance `reach`
-export function spawnSlash(particles, x, y, facingX, facingY, reach) {
+// Spawn a slash effect in the direction (facingX, facingY) at distance `reach`.
+// `fullArc` draws a 360° ring (wideArc card). Optional color/glow for enemy slashes.
+export function spawnSlash(particles, x, y, facingX, facingY, reach, fullArc = false, color, glow) {
   const angle = Math.atan2(facingY, facingX);
-  particles.push(new SlashEffect(x, y, angle, reach));
+  particles.push(new SlashEffect(x, y, angle, reach, fullArc, color, glow));
 }
 
 // Blood/death particles when guard dies

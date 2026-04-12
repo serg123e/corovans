@@ -49,6 +49,10 @@ export class Game {
     this.caravansRobbed = 0;
     this._dustTimer = 0;
 
+    // AI demo mode (set by main.js when ?ai= parameter is present).
+    this._aiController = null;
+    this._timeScale = 1;
+
     // Entity lists (populated by later tasks)
     this.player = null;
     this.caravans = [];
@@ -96,7 +100,11 @@ export class Game {
       frameTime = this._maxFrameTime;
     }
 
-    this._accumulator += frameTime;
+    this._accumulator += frameTime * this._timeScale;
+    // Cap accumulator so display stutters don't cause a burst of catch-up steps.
+    // At x32 speed: 32/60 ≈ 0.53s per frame = ~32 steps. Cap at 40 for headroom.
+    const maxAccum = this._dt * 40;
+    if (this._accumulator > maxAccum) this._accumulator = maxAccum;
 
     // Fixed update steps
     while (this._accumulator >= this._dt) {
@@ -109,6 +117,11 @@ export class Game {
   }
 
   update(dt) {
+    // AI controller pre-tick: observe game state, run policy, write input.
+    if (this._aiController) {
+      this._aiController.tick(this);
+    }
+
     // Global hotkeys (work in any state where they make sense).
     if (this.input.wasPressed('KeyM')) {
       this.audio.toggleMute();
@@ -161,6 +174,10 @@ export class Game {
       case State.GAME_OVER:
         this._renderGameOver(r);
         break;
+    }
+
+    if (this._aiController) {
+      this._renderAIOverlay(r);
     }
   }
 
@@ -376,7 +393,7 @@ export class Game {
       // Handle player attack
       if (this.input.wantsAttack()) {
         // Click / tap reaims the player toward the cursor before attacking.
-        // Space uses whatever facing the player already has (from movement).
+        // Space auto-aims at the nearest alive enemy (guard or caravan).
         if (this.input.mouse.clicked) {
           const world = this.camera.screenToWorld(this.input.mouse.x, this.input.mouse.y);
           const dx = world.x - this.player.pos.x;
@@ -384,6 +401,26 @@ export class Game {
           const len = Math.sqrt(dx * dx + dy * dy);
           if (len > 0.01) {
             this.player.facing = new Vec2(dx / len, dy / len);
+          }
+        } else {
+          // Auto-aim at nearest enemy
+          let bestDist = Infinity;
+          let bestTarget = null;
+          for (const g of this.guards) {
+            if (!g.alive) continue;
+            const d = this.player.pos.dist(g.pos);
+            if (d < bestDist) { bestDist = d; bestTarget = g; }
+          }
+          for (const c of this.caravans) {
+            if (!c.alive) continue;
+            const d = this.player.pos.dist(c.pos);
+            if (d < bestDist) { bestDist = d; bestTarget = c; }
+          }
+          if (bestTarget) {
+            this.player.face(
+              bestTarget.pos.x - this.player.pos.x,
+              bestTarget.pos.y - this.player.pos.y
+            );
           }
         }
         if (this.player.tryAttack()) {
@@ -395,7 +432,8 @@ export class Game {
             this.player.pos.y,
             this.player.facing.x,
             this.player.facing.y,
-            this.player.radius + this.player.attackRange
+            this.player.radius + this.player.attackRange,
+            this.player.fullArcAttack
           );
           const hits = performAttack(this.player, this.guards, this.caravans);
           // Lifesteal: heal a fraction of total dealt damage this swing.
@@ -467,6 +505,18 @@ export class Game {
             );
             this.projectiles.push(proj);
           } else {
+            // Melee guard swing animation (red tint to distinguish from player)
+            const gdir = this.player.pos.sub(guard.pos);
+            const glen = gdir.len();
+            if (glen > 0.01) {
+              spawnSlash(
+                this.particles,
+                guard.pos.x, guard.pos.y,
+                gdir.x / glen, gdir.y / glen,
+                guard.radius + guard.attackRange,
+                false, '#ff6644', '#ff4422'
+              );
+            }
             const hpBefore = this.player.hp;
             this.player.takeDamage(result.damage);
             // Turn toward the attacker so a counter-attack lands naturally.
@@ -740,7 +790,7 @@ export class Game {
       const idx = this.ui.handleDraftClick(mx, my);
       if (idx >= 0) {
         const card = this.ui.draftOffer[idx] || null;
-        const cost = this.shopOrigin === 'world' ? this.ui.getCardCost(card) : 0;
+        const cost = this.ui.getCardCost(card);
         const applied = this.ui.pickCard(idx, this.player);
         if (applied && card) {
           this.logger.logCardPicked(
@@ -816,6 +866,23 @@ export class Game {
 
   _renderGameOver(r) {
     this.ui.renderGameOver(r, this);
+  }
+
+  _renderAIOverlay(r) {
+    const name = this._aiController.policy.name;
+    const speed = this._timeScale;
+    r.setAlpha(0.8);
+    r.textOutlined(
+      `AI: ${name}  x${speed}`,
+      r.width - 10, r.height - 20,
+      '#00ff88', '#000', 14, 'right', 'middle'
+    );
+    r.text(
+      '1-6: \u0441\u043A\u043E\u0440\u043E\u0441\u0442\u044C  Esc: \u043F\u0430\u0443\u0437\u0430  M: \u0437\u0432\u0443\u043A',
+      r.width - 10, r.height - 40,
+      '#00aa55', 11, 'right'
+    );
+    r.resetAlpha();
   }
 
   // --- Helpers ---

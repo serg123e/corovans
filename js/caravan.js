@@ -272,7 +272,7 @@ const ROYAL_SPRITE = [
 
 
 export class Guard {
-  constructor(x, y, caravan, type = GuardType.BASIC, rng = null) {
+  constructor(x, y, caravan, type = GuardType.BASIC, rng = null, wave = 1) {
     this.pos = new Vec2(x, y);
     this.vel = new Vec2(0, 0);
     this.radius = CONST.GUARD_RADIUS;
@@ -307,6 +307,18 @@ export class Guard {
         this.attackRange = CONST.GUARD_ATTACK_RANGE;
         this.attackCooldown = CONST.GUARD_ATTACK_COOLDOWN;
         break;
+    }
+
+    // Wave scaling: +3% HP and +2% damage per wave past wave 5.
+    // Early waves stay baseline so the player can bootstrap gold for
+    // card purchases. Scaling kicks in mid-game where the card economy
+    // provides enough power to match.
+    if (wave > 5) {
+      const hpScale = 1 + (wave - 5) * 0.03;
+      const dmgScale = 1 + (wave - 5) * 0.02;
+      this.maxHp = Math.round(this.maxHp * hpScale);
+      this.damage = Math.round(this.damage * dmgScale);
+      this.armor = Math.round(this.armor * hpScale);
     }
 
     this.hp = this.maxHp;
@@ -375,7 +387,14 @@ export class Guard {
       switch (this.state) {
         case GuardState.PATROL:
           if (distToPlayer < this.detectionRange) {
-            this.state = GuardState.CHASE;
+            // Alert all siblings — the whole escort joins the chase.
+            // The caravan-distance leash in CHASE prevents them from
+            // abandoning the caravan entirely.
+            for (const g of this.caravan.guards) {
+              if (g.alive && g.state === GuardState.PATROL) {
+                g.state = GuardState.CHASE;
+              }
+            }
           }
           break;
         case GuardState.CHASE:
@@ -399,37 +418,60 @@ export class Guard {
       case GuardState.PATROL:
         targetPos = caravanPos.add(this.patrolOffset);
         break;
-      case GuardState.CHASE:
+      case GuardState.CHASE: {
         if (this.type === GuardType.ARCHER) {
-          // Archers try to maintain preferred distance
+          // Archers keep preferred distance from the player but bias
+          // toward the caravan side so they don't wander off.
           const toPlayer = playerPos.sub(this.pos);
           const dist = toPlayer.len();
           if (dist < CONST.ARCHER_PREFERRED_DIST * 0.7) {
-            // Too close - back away
-            targetPos = this.pos.sub(toPlayer.normalize().mul(CONST.ARCHER_PREFERRED_DIST));
+            // Too close — back toward caravan, not just away from player.
+            const retreatDir = this.caravan.pos.sub(this.pos);
+            targetPos = retreatDir.lenSq() > 1
+              ? this.pos.add(retreatDir.normalize().mul(CONST.ARCHER_PREFERRED_DIST))
+              : this.pos.sub(toPlayer.normalize().mul(CONST.ARCHER_PREFERRED_DIST));
           } else if (dist > CONST.ARCHER_PREFERRED_DIST * 1.3) {
-            // Too far - approach
             targetPos = playerPos;
           } else {
-            // Good range - strafe slightly
             targetPos = this.pos;
           }
         } else {
-          // Melee guards stop just outside the player's body so they don't
-          // occlude the sprite by sharing the same tile. Standoff stays inside
-          // attack reach (radius + attackRange), so attacks still land.
-          const toPlayer = playerPos.sub(this.pos);
-          const dist = toPlayer.len();
+          // Flanking: melee guards spread in an arc between the caravan
+          // and the player instead of all chasing the same point. Each
+          // guard gets a slot on a ring around the player so they approach
+          // from different angles and surround rather than single-file.
           const standoff = this.radius + CONST.PLAYER_RADIUS + 4;
-          if (dist > standoff) {
-            const dir = toPlayer.normalize();
-            targetPos = playerPos.sub(dir.mul(standoff));
-          } else {
-            // Already at the ring - hold position.
-            targetPos = this.pos;
+
+          // Find this guard's slot among alive melee siblings.
+          const siblings = this.caravan.guards;
+          let slot = 0, meleeAlive = 0;
+          for (const g of siblings) {
+            if (!g.alive || g.type === GuardType.ARCHER) continue;
+            if (g === this) slot = meleeAlive;
+            meleeAlive++;
           }
+
+          // Base angle: from player toward caravan — guards position on
+          // the caravan side to protect it.
+          const refDir = this.caravan.pos.sub(playerPos);
+          const baseAngle = refDir.lenSq() > 1
+            ? Math.atan2(refDir.y, refDir.x)
+            : 0;
+
+          // Distribute guards across a 144° arc centered on the base angle.
+          const arcSpread = Math.PI * 0.8;
+          const angleOffset = meleeAlive > 1
+            ? (slot / (meleeAlive - 1) - 0.5) * arcSpread
+            : 0;
+          const angle = baseAngle + angleOffset;
+
+          targetPos = new Vec2(
+            playerPos.x + Math.cos(angle) * standoff,
+            playerPos.y + Math.sin(angle) * standoff,
+          );
         }
         break;
+      }
       case GuardState.RETURN:
         targetPos = caravanPos;
         break;
@@ -452,6 +494,12 @@ export class Guard {
     }
 
     this.pos = this.pos.add(this.vel.mul(dt));
+
+    // Clamp to world boundaries so guards (especially archers backing away)
+    // can't walk off the edge and shoot from unreachable positions.
+    const world = this.caravan.world;
+    this.pos.x = clamp(this.pos.x, this.radius, world.width - this.radius);
+    this.pos.y = clamp(this.pos.y, this.radius, world.height - this.radius);
 
     // Animation
     this.animTimer += dt;
@@ -596,7 +644,7 @@ export class Caravan {
         }
       }
 
-      const guard = new Guard(gx, gy, this, guardType, rng);
+      const guard = new Guard(gx, gy, this, guardType, rng, wave);
       this.guards.push(guard);
     }
     return this.guards;
@@ -755,19 +803,27 @@ export function spawnWave(wave, world, rng = null) {
   const isBossWave = wave > 0 && wave % 5 === 0;
   const rand = randFn(rng);
 
-  // Scaling: more caravans as waves progress. Flattened starting at wave 6
-  // so the transition out of "boss-wave-5" doesn't double-ramp caravan
-  // count AND armored density in the same step — that combo kept showing
-  // up as a 10%+ mortality spike at wave 6 in the smart-policy sims.
-  let caravanCount = wave <= 5
-    ? Math.min(1 + Math.floor(wave / 2), 6)
-    : Math.min(Math.floor(wave / 2), 6);
+  // Scaling: more caravans as waves progress. Grows slower past wave 12
+  // so mid-game doesn't spike too hard, but never caps — late waves keep
+  // adding pressure.
+  let caravanCount;
+  if (wave <= 5) {
+    caravanCount = 1 + Math.floor(wave / 2);        // 1,2,2,3,3
+  } else if (wave <= 12) {
+    caravanCount = Math.floor(wave / 2);             // 3..6
+  } else {
+    caravanCount = 6 + Math.floor((wave - 12) / 3);  // 6,7,7,7,8,8,8,9...
+  }
 
   if (isBossWave) {
-    // Boss wave: spawn one boss caravan + fewer regular caravans
+    // Boss wave: spawn one boss caravan + fewer regular caravans.
+    // Boss HP scales with wave number: base ×3 at wave 5, growing +1× per
+    // boss cycle (×4 at wave 10, ×5 at wave 15, etc.) so late bosses are
+    // real walls, not speed bumps.
     const bossCaravan = new Caravan(CaravanType.ROYAL, world, rng);
     bossCaravan.isBoss = true;
-    bossCaravan.maxHp = Math.round(bossCaravan.maxHp * CONST.BOSS_HP_MULTIPLIER);
+    const bossHpMul = CONST.BOSS_HP_MULTIPLIER + Math.floor(wave / 5) - 1;
+    bossCaravan.maxHp = Math.round(bossCaravan.maxHp * bossHpMul);
     bossCaravan.hp = bossCaravan.maxHp;
     bossCaravan.lootValue = Math.round(bossCaravan.lootValue * CONST.BOSS_LOOT_MULTIPLIER);
     bossCaravan.radius = 28; // bigger sprite
@@ -786,6 +842,12 @@ export function spawnWave(wave, world, rng = null) {
   }
 
   const startIdx = caravans.length;
+  // Dynamic spacing so all caravans start in the left portion of the road
+  // (pathT < ~0.35) regardless of count. Prevents later caravans from
+  // spawning at or past the player's position on high waves.
+  const totalSlots = startIdx + caravanCount;
+  const spacing = totalSlots > 1 ? 0.30 / (totalSlots - 1) : 0;
+
   for (let i = 0; i < caravanCount; i++) {
     // Choose type based on wave
     let type;
@@ -802,8 +864,8 @@ export function spawnWave(wave, world, rng = null) {
 
     const caravan = new Caravan(type, world, rng);
 
-    // Stagger starting positions along the road
-    caravan.pathT = 0.02 + ((startIdx + i) * 0.12);
+    // Stagger starting positions along the left portion of the road
+    caravan.pathT = 0.02 + ((startIdx + i) * spacing);
     caravan.direction = 1;
     const roadPos = world.getRoadPosition(caravan.pathT);
     caravan.pos.x = roadPos.x;

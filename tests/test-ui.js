@@ -83,20 +83,35 @@ function assert(condition, message) {
   assert(ui._paidOfferWave === 2, 'beginPaidDraft: tracked wave updated');
 }
 
-// --- pickCard (free mode) applies effect and clears offer ---
+// --- pickCard (free mode) applies effect, deducts gold, clears offer ---
 {
   const ui = new UI();
   ui.draftMode = DraftMode.FREE;
   const player = new Player(100, 100);
+  player.gold = 100;
   const damageCard = CARDS.find(c => c.id === 'damage');
   ui.draftOffer = [damageCard];
   const origDamage = player.damage;
+  const cost = ui.getCardCost(damageCard);
 
   const result = ui.pickCard(0, player);
   assert(result === true, 'pickCard(free): returns true on success');
   assert(player.damage === origDamage + 5, 'pickCard(free): damage card applied');
+  assert(player.gold === 100 - cost, 'pickCard(free): gold deducted');
   assert(ui.draftOffer.length === 0, 'pickCard(free): offer cleared after pick');
   assert(ui.cardCounts['damage'] === 1, 'pickCard(free): increments cardCounts');
+}
+
+// --- pickCard (free mode) refuses when player lacks gold ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.FREE;
+  const player = new Player(100, 100);
+  player.gold = 0;
+  const card = CARDS.find(c => c.id === 'damage');
+  ui.draftOffer = [card];
+  const ok = ui.pickCard(0, player);
+  assert(ok === false, 'pickCard(free): fails without gold');
 }
 
 // --- pickCard (paid mode) deducts gold and consumes the per-wave allowance ---
@@ -235,6 +250,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'damage');
   const base = player.damage;
   ui.draftOffer = [card]; ui.pickCard(0, player);
@@ -249,6 +265,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'regen');
   const base = player.regenPerSec;
   ui.draftOffer = [card]; ui.pickCard(0, player);
@@ -271,6 +288,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const hpCard = CARDS.find(c => c.id === 'maxHp');
   ui.draftOffer = [hpCard];
   const origHp = player.hp;
@@ -284,6 +302,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'speed');
   ui.draftOffer = [card];
   const origSpeed = player.speed;
@@ -297,6 +316,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'attackRange');
   ui.draftOffer = [card];
   const orig = player.attackRange;
@@ -308,6 +328,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'cooldown');
   ui.draftOffer = [card];
   const orig = player.attackCooldown;
@@ -320,6 +341,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'lifesteal');
   ui.draftOffer = [card];
   assert(player.lifestealPct === 0, 'lifesteal: starts at 0');
@@ -331,6 +353,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'thorns');
   ui.draftOffer = [card];
   ui.pickCard(0, player);
@@ -341,6 +364,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'magnet');
   ui.draftOffer = [card];
   assert(player.magnetRangeMul === 1, 'magnet: starts at 1');
@@ -352,6 +376,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'regen');
   ui.draftOffer = [card];
   const orig = player.regenPerSec;
@@ -363,6 +388,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'dashCooldown');
   assert(!!card, 'dashCooldown card: exists in pool');
   ui.draftOffer = [card];
@@ -378,6 +404,7 @@ function assert(condition, message) {
 {
   const ui = new UI();
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'glassCannon');
   ui.draftOffer = [card];
   const origDmg = player.damage;
@@ -392,6 +419,7 @@ function assert(condition, message) {
   const ui = new UI();
   ui.draftMode = DraftMode.FREE;
   const player = new Player(100, 100);
+  player.gold = 9999;
   const card = CARDS.find(c => c.id === 'wideArc');
   ui.draftOffer = [card];
   assert(player.fullArcAttack === false, 'wideArc: starts disabled');

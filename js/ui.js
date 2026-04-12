@@ -337,35 +337,31 @@ export class UI {
     return true;
   }
 
-  // Pick a card from the current offer. In paid mode, deducts gold and bails
-  // out if the player can't afford it — or if the per-wave paid allowance
-  // is already spent. Returns true if a card was applied.
+  // Pick a card from the current offer. Always deducts gold. In world-shop
+  // (PAID) mode, also enforces the per-wave pick limit.
+  // Returns true if a card was applied.
   pickCard(index, player) {
     if (!player) return false;
     if (index < 0 || index >= this.draftOffer.length) return false;
     const card = this.draftOffer[index];
     if (!card) return false;
 
-    if (this.draftMode === DraftMode.PAID) {
-      if (this._paidPicksThisWave >= 1) return false;
-      const cost = this.getCardCost(card);
-      if (player.gold < cost) return false;
-      player.gold -= cost;
-    }
+    // Per-wave limit: world shop only (wave-end draft is one-and-done by flow).
+    if (this.draftMode === DraftMode.PAID && this._paidPicksThisWave >= 1) return false;
+
+    // All cards cost gold.
+    const cost = this.getCardCost(card);
+    if (player.gold < cost) return false;
+    player.gold -= cost;
 
     const owned = this.cardCounts[card.id] || 0;
     card.apply(player, stackScale(owned));
     this.cardCounts[card.id] = owned + 1;
 
     if (this.draftMode === DraftMode.PAID) {
-      // One paid pick per wave — clear the offer so subsequent re-entries
-      // see nothing to buy until onWaveStart() refreshes the allowance.
       this._paidPicksThisWave++;
-      this.draftOffer = [];
-    } else {
-      // Free draft: one pick, then the offer is consumed.
-      this.draftOffer = [];
     }
+    this.draftOffer = [];
     return true;
   }
 
@@ -548,8 +544,8 @@ export class UI {
       const x = startX + i * (cardW + gap);
       this._cardButtons.push({ x, y: cardY, w: cardW, h: cardH });
 
-      const cost = paid ? this.getCardCost(card) : 0;
-      const canAfford = !paid || (player && player.gold >= cost);
+      const cost = this.getCardCost(card);
+      const canAfford = player && player.gold >= cost;
 
       // Background + rarity border
       r.rect(x, cardY, cardW, cardH, canAfford ? '#222237' : '#1a1a24');
@@ -572,19 +568,16 @@ export class UI {
       // Description
       r.text(card.desc, x + cardW / 2, cardY + 155, canAfford ? '#bbb' : '#555', 11, 'center');
 
-      // Cost (paid mode) or owned count (free mode)
-      if (paid) {
-        const costColor = canAfford ? CONST.COLOR_GOLD : '#664400';
-        r.textOutlined(
-          `${cost} \u2B50`,
-          x + cardW / 2, cardY + cardH - 22,
-          costColor, '#000', 16, 'center', 'middle'
-        );
-      } else {
-        const owned = this.cardCounts[card.id] || 0;
-        if (owned > 0) {
-          r.text(`у тебя: x${owned}`, x + cardW / 2, cardY + cardH - 20, '#888', 11, 'center');
-        }
+      // Cost + owned count
+      const costColor = canAfford ? CONST.COLOR_GOLD : '#664400';
+      r.textOutlined(
+        `${cost} \u2B50`,
+        x + cardW / 2, cardY + cardH - 22,
+        costColor, '#000', 16, 'center', 'middle'
+      );
+      const owned = this.cardCounts[card.id] || 0;
+      if (owned > 0) {
+        r.text(`x${owned}`, x + cardW / 2, cardY + cardH - 6, '#888', 10, 'center');
       }
     }
 

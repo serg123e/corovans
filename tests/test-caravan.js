@@ -151,12 +151,29 @@ class MockWorld {
   const c = new Caravan(CaravanType.DONKEY, world);
   c.pos = new Vec2(400, 300);
   const g = new Guard(400, 300, c);
+  c.guards.push(g);
 
   // Player within detection range
   const playerPos = new Vec2(400 + CONST.GUARD_DETECTION_RANGE - 10, 300);
   g.update(1 / 60, playerPos);
 
   assert(g.state === 'chase', 'Guard chases when player in detection range');
+}
+
+// --- Alert propagation: one guard spotting player triggers all siblings ---
+{
+  const world = new MockWorld();
+  const c = new Caravan(CaravanType.DONKEY, world);
+  c.pos = new Vec2(400, 300);
+  const near = new Guard(400, 300, c);
+  const far = new Guard(200, 300, c);
+  c.guards.push(near, far);
+
+  const playerPos = new Vec2(400 + CONST.GUARD_DETECTION_RANGE - 10, 300);
+  near.update(1 / 60, playerPos);
+
+  assert(near.state === 'chase', 'Alert: spotter enters chase');
+  assert(far.state === 'chase', 'Alert: distant sibling also enters chase');
 }
 
 // --- Guard moves toward player during chase ---

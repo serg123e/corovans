@@ -301,10 +301,12 @@ export class Simulator {
           const MAX_SHOP_DECISIONS = 8;
           let closed = false;
           for (let step = 0; step < MAX_SHOP_DECISIONS && !closed; step++) {
+            const shopOffer = ui.draftOffer.slice();
             const shopView = {
               wave,
               mode: 'free',
-              offer: ui.draftOffer.slice(),
+              offer: shopOffer,
+              costs: shopOffer.map(c => ui.getCardCost(c)),
               player: this._playerView(player),
               gold: player.gold,
               rng,
@@ -313,8 +315,10 @@ export class Simulator {
 
             if (decision.action === 'pick' && typeof decision.index === 'number') {
               const card = ui.draftOffer[decision.index];
+              const pickCost = card ? ui.getCardCost(card) : 0;
               if (card && ui.pickCard(decision.index, player)) {
-                logger.logCardPicked(card.id, card.rarity, 'free', 0, wave);
+                logger.logCardPicked(card.id, card.rarity, 'free', pickCost, wave);
+                logger.logGoldSpent(pickCost);
               }
               closed = true;
             } else if (decision.action === 'reroll') {

@@ -62,7 +62,7 @@ function resetStorage() {
   const playing = p.decidePlaying({});
   assert(playing.moveX === 0, 'AIPolicy base: no movement');
   assert(playing.attack === false, 'AIPolicy base: no attack');
-  const shop = p.decideShop({});
+  const shop = p.decideShop({ offer: [{ id: 'a' }], costs: [15], gold: 100 });
   assert(shop.action === 'pick', 'AIPolicy base: picks card by default');
   assert(shop.index === 0, 'AIPolicy base: picks index 0');
 }
@@ -142,6 +142,7 @@ function resetStorage() {
   const decision = policy.decideShop({
     mode: 'free',
     offer: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+    costs: [15, 15, 15], gold: 100,
   });
   assert(decision.action === 'pick', 'Greedy shop: pick action');
   assert(decision.index === 0, 'Greedy shop: picks index 0');
@@ -154,6 +155,7 @@ function resetStorage() {
     const decision = policy.decideShop({
       mode: 'free',
       offer: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd' }, { id: 'e' }],
+      costs: [15, 15, 15, 15, 15], gold: 100,
     });
     assert(decision.action === 'pick', 'RandomCards: pick action');
     assert(decision.index >= 0 && decision.index < 5, `RandomCards: index in [0,5): got ${decision.index}`);
@@ -163,13 +165,13 @@ function resetStorage() {
 // --- SmartPolicy: dodges incoming arrow by stepping perpendicular ---
 {
   const policy = new SmartPolicy();
-  // Arrow flying east toward player, 60px away. Player should step
-  // perpendicular (north or south) with dash ready.
+  // Arrow flying east toward player, 60px away. HP below arrowDodgeHpPct
+  // (default 0.7) so dodge kicks in.
   const view = {
     wave: 3,
     player: {
       pos: new Vec2(500, 500),
-      hp: 80, maxHp: 100, gold: 0, damage: 15, speed: 160,
+      hp: 60, maxHp: 100, gold: 0, damage: 15, speed: 160,
       radius: 12, attackRange: 28, attackTimer: 0,
       dashCooldownTimer: 0, dashCooldownMax: 1,
       iframeTimer: 0, alive: true,
@@ -188,6 +190,34 @@ function resetStorage() {
   assert(action.dash === true, 'Smart dodge: dashes when cooldown ready');
   assert(Math.abs(action.moveX) < 0.01, 'Smart dodge: no move along arrow axis');
   assert(Math.abs(action.moveY) > 0.9, 'Smart dodge: perpendicular move (y axis)');
+}
+
+// --- SmartPolicy: at high HP, ignores incoming arrows and engages ---
+{
+  const policy = new SmartPolicy();
+  const view = {
+    wave: 7,
+    player: {
+      pos: new Vec2(500, 500),
+      hp: 90, maxHp: 100, gold: 0, damage: 15, speed: 160,
+      radius: 12, attackRange: 28, attackTimer: 0,
+      dashCooldownTimer: 0, dashCooldownMax: 1,
+      iframeTimer: 0, alive: true,
+      lifestealPct: 0, thornsPct: 0, magnetRangeMul: 1,
+    },
+    guards: [
+      { alive: true, pos: new Vec2(600, 500), type: 'archer', radius: 10, damage: 6 },
+    ],
+    caravans: [],
+    // Arrow incoming, but HP is above arrowDodgeHpPct — should ignore and engage.
+    projectiles: [
+      { alive: true, pos: new Vec2(440, 500), dir: new Vec2(1, 0), damage: 6 },
+    ],
+    loots: [], shop: null,
+  };
+  const action = policy.decidePlaying(view);
+  assert(action.moveX > 0, 'Smart high-HP: charges toward archer instead of dodging');
+  assert(action.dash === false || action.dash === true, 'Smart high-HP: may or may not dash');
 }
 
 // --- SmartPolicy: ignores projectiles flying away from player ---
@@ -274,6 +304,7 @@ function resetStorage() {
       { id: 'lifesteal' },
       { id: 'glassCannon' },
     ],
+    costs: [15, 15, 40, 80], gold: 100,
   });
   assert(decision.action === 'pick', 'Smart shop: picks a card');
   assert(decision.index === 2, `Smart shop: picks lifesteal (got ${decision.index})`);
@@ -289,8 +320,10 @@ function resetStorage() {
       { id: 'magnet' },
       { id: 'glassCannon' },
     ],
+    costs: [15, 40, 80], gold: 100,
   });
-  assert(decision.index === 0, 'Smart shop: falls back to index 0');
+  // speed is in preferCards, so Smart picks it directly (not fallback)
+  assert(decision.index === 0, 'Smart shop: picks speed (preferred)');
 }
 
 // --- SmartPolicy integration: real sim reaches deeper waves than greedy ---
