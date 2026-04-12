@@ -55,7 +55,7 @@ version.json        - Build tag (commit sha) loaded at boot by main.js; embedded
 
 Common operations live in the `Makefile` — `make help` lists them. Shortcuts: `make test`, `make sim`, `make combo`, `make telemetry`, `make ngrok`, `make version`, `make play`. The raw commands below are the source of truth for the targets.
 
-- Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js && node tests/test-input.js && node tests/test-session-logger.js && node tests/test-simulator.js`
+- Run all tests: `node tests/test-vector.js && node tests/test-player.js && node tests/test-caravan.js && node tests/test-combat.js && node tests/test-ui.js && node tests/test-collision.js && node tests/test-particles.js && node tests/test-input.js && node tests/test-session-logger.js && node tests/test-simulator.js && node tests/test-analyze.js`
 - Play: open `index.html` in browser (no server needed, uses ES modules)
 - Update build tag before playtesting: `./scripts/update-version.sh` (or symlink to `.git/hooks/post-commit`)
 - Run headless AI batches: `node js/sim/run.js --policy greedy --count 50 --max-waves 20 [--seed 42] [--start-cards id,id] [--out sim.json]`

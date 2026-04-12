@@ -30,10 +30,12 @@ function assert(condition, message) {
   ui.cardCounts['damage'] = 3;
   ui.rerollCount = 5;
   ui.draftOffer = [CARDS[0]];
+  ui._paidPicksThisWave = 1;
   ui.reset();
   assert(Object.keys(ui.cardCounts).length === 0, 'UI reset: cardCounts cleared');
   assert(ui.rerollCount === 0, 'UI reset: rerollCount zeroed');
   assert(ui.draftOffer.length === 0, 'UI reset: draftOffer cleared');
+  assert(ui._paidPicksThisWave === 0, 'UI reset: _paidPicksThisWave zeroed');
 }
 
 // --- beginFreeDraft draws 5 distinct cards ---
@@ -168,6 +170,24 @@ function assert(condition, message) {
   ui.beginPaidDraft(1);
   assert(ui.draftOffer.length === 0, 'beginPaidDraft: empty offer when limit already reached');
   assert(ui.paidPickLimitReached(), 'beginPaidDraft: limit still flagged');
+}
+
+// --- tryReroll refuses after paid-pick limit is reached ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  player.gold = 1000;
+  ui.beginPaidDraft(1);
+  const goldBefore = player.gold;
+  assert(ui.tryReroll(player) === true, 'tryReroll: works before any pick');
+  assert(player.gold < goldBefore, 'tryReroll: deducted gold');
+
+  ui.pickCard(0, player);
+  assert(ui.paidPickLimitReached(), 'tryReroll setup: limit reached');
+
+  const goldAfterPick = player.gold;
+  assert(ui.tryReroll(player) === false, 'tryReroll: blocked after paid limit');
+  assert(player.gold === goldAfterPick, 'tryReroll: no gold deducted when blocked');
 }
 
 // --- pickCard (paid mode) refuses when player lacks gold ---

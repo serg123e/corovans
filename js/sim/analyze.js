@@ -26,6 +26,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { summarizeBatch, cardImpact, perWaveStats } from './simulator.js';
 
 function parseArgs(argv) {
@@ -153,10 +154,9 @@ function median(xs) {
   return s[Math.floor(s.length / 2)];
 }
 
-// Count free and paid card picks per session. `mode` was added to the
-// cardsPicked entry shape at some point — older sessions may omit it,
-// in which case we treat the pick as 'free' (end-of-wave draft is the
-// only free source, so missing mode defaults to the majority case).
+// Count free and paid card picks per session. Picks without an explicit
+// `mode` field are counted as free (the sim never sets mode, and free
+// is the default end-of-wave draft).
 function splitPicks(session) {
   const picks = (session.summary && session.summary.cardsPicked) || [];
   let free = 0, paid = 0;
@@ -164,7 +164,7 @@ function splitPicks(session) {
     if (p.mode === 'paid') paid++;
     else free++;
   }
-  return { free, paid, total: picks.length };
+  return { free, paid };
 }
 
 // Bucket sessions by paid-pick count. Reveals the "free only" vs
@@ -230,10 +230,11 @@ function renderReport(label, sessions, topN) {
     console.log(`\n  Paid-shop cohort (bucket by # of paid picks per run):`);
     console.log(`    bucket     n   medWave  medDur   medFree  medPaid  medSpent`);
     for (const [label, arr] of cohortRows) {
+      const arrSplits = arr.map(s => splitPicks(s));
       const w = median(arr.map(s => s.summary.waveReached));
       const d = median(arr.map(s => (s.summary.durationMs || 0) / 1000));
-      const f = median(arr.map(s => splitPicks(s).free));
-      const p = median(arr.map(s => splitPicks(s).paid));
+      const f = median(arrSplits.map(sp => sp.free));
+      const p = median(arrSplits.map(sp => sp.paid));
       const sp = median(arr.map(s => s.summary.goldSpent || 0));
       console.log(`    ${label.padEnd(9)} ${pad(arr.length, 3)}   ${pad(w, 6)}  ${pad(Math.round(d), 5)}s  ${pad(f, 7)}  ${pad(p, 7)}  ${pad(Math.round(sp), 8)}`);
     }
@@ -415,4 +416,7 @@ function main() {
   }
 }
 
-main();
+// Only run as CLI — skip when imported by tests.
+if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+
+export { median, splitPicks, paidCohorts, damageBySource, deathCauses, percentiles, loadSessions };

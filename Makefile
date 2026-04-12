@@ -23,7 +23,8 @@ test:
 	  && node tests/test-particles.js \
 	  && node tests/test-input.js \
 	  && node tests/test-session-logger.js \
-	  && node tests/test-simulator.js
+	  && node tests/test-simulator.js \
+	  && node tests/test-analyze.js
 
 sim:
 	node js/sim/run.js --policy smart --count 300 --max-waves 30 --seed 42

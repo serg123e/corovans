@@ -236,10 +236,7 @@ export class UI {
     // Wave at which the paid offer was last rolled. Paid offer persists inside
     // a wave so players can't re-roll by exiting and re-entering the shop.
     this._paidOfferWave = -1;
-    // Paid picks already purchased in the current wave. Capped at 1 so the
-    // player can't grind the shop via buy → reroll → buy → reroll loops.
-    // Reset to 0 in onWaveStart(). See 2026-04 playtest data: a single
-    // session bought 24 paid cards in one run, reaching wave 12 in 2.4h.
+    // At most one paid purchase per wave. Reset in onWaveStart().
     this._paidPicksThisWave = 0;
 
     // Interaction rects set during render.
@@ -331,6 +328,7 @@ export class UI {
   }
 
   tryReroll(player, rng = null) {
+    if (this.draftMode === DraftMode.PAID && this._paidPicksThisWave >= 1) return false;
     const cost = this.getRerollCost();
     if (!player || player.gold < cost) return false;
     player.gold -= cost;
@@ -518,6 +516,32 @@ export class UI {
     const totalW = DRAFT_SIZE * cardW + (DRAFT_SIZE - 1) * gap;
     const startX = cx - totalW / 2;
     const cardY = 130;
+
+    // Paid shop: if the per-wave allowance is spent, show a "sold out"
+    // message instead of an empty card area.
+    if (paid && this.paidPickLimitReached()) {
+      r.textOutlined('РАСПРОДАНО', cx, cardY + cardH / 2 - 10, '#888', '#000', 32, 'center', 'middle');
+      r.text('Приходи на следующей волне', cx, cardY + cardH / 2 + 26, '#666', 14, 'center');
+      // No reroll button — nothing to reroll.
+      this._rerollButton = null;
+      const skW = 180;
+      const skH = 40;
+      const skX = cx - skW / 2;
+      const skY = cardY + cardH + 30;
+      this._skipButton = { x: skX, y: skY, w: skW, h: skH };
+      r.rect(skX, skY, skW, skH, '#2a3a5a');
+      r.strokeRect(skX, skY, skW, skH, '#4a6a8a', 2);
+      r.textOutlined('Выйти из шопа', skX + skW / 2, skY + skH / 2, '#fff', '#000', 16, 'center', 'middle');
+      if (player) {
+        const sy = skY + skH + 30;
+        r.textOutlined('Характеристики:', cx, sy, '#aaa', '#000', 15, 'center', 'middle');
+        r.text(`Урон: ${player.damage}`, cx - 200, sy + 22, '#ccc', 13);
+        r.text(`HP: ${player.hp}/${player.maxHp}`, cx - 70, sy + 22, '#ccc', 13);
+        r.text(`Скорость: ${player.speed}`, cx + 60, sy + 22, '#ccc', 13);
+        r.text(`Радиус: ${player.attackRange}`, cx + 200, sy + 22, '#ccc', 13);
+      }
+      return;
+    }
 
     for (let i = 0; i < this.draftOffer.length; i++) {
       const card = this.draftOffer[i];
