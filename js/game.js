@@ -754,6 +754,11 @@ export class Game {
         }
         if (applied && this.shopOrigin === 'wave') {
           this.startNextWave();
+        } else if (applied && this.shopOrigin === 'world') {
+          // Paid shop: one purchase per wave. Auto-close so the player
+          // gets unambiguous feedback that the allowance is spent — same
+          // rhythm as the free draft closing on a single pick.
+          this.closeShopToPlaying();
         }
         this.input.endFrame();
         return;

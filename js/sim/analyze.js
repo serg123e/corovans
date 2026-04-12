@@ -147,6 +147,37 @@ function percentiles(values) {
 }
 
 function avg(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+function median(xs) {
+  if (!xs.length) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+// Count free and paid card picks per session. `mode` was added to the
+// cardsPicked entry shape at some point — older sessions may omit it,
+// in which case we treat the pick as 'free' (end-of-wave draft is the
+// only free source, so missing mode defaults to the majority case).
+function splitPicks(session) {
+  const picks = (session.summary && session.summary.cardsPicked) || [];
+  let free = 0, paid = 0;
+  for (const p of picks) {
+    if (p.mode === 'paid') paid++;
+    else free++;
+  }
+  return { free, paid, total: picks.length };
+}
+
+// Bucket sessions by paid-pick count. Reveals the "free only" vs
+// "paid shop grinder" split that's been dominating live playtests.
+function paidCohorts(sessions) {
+  const buckets = {
+    'paid=0':   sessions.filter(s => splitPicks(s).paid === 0),
+    'paid=1-2': sessions.filter(s => { const p = splitPicks(s).paid; return p >= 1 && p <= 2; }),
+    'paid=3-5': sessions.filter(s => { const p = splitPicks(s).paid; return p >= 3 && p <= 5; }),
+    'paid≥6':   sessions.filter(s => splitPicks(s).paid >= 6),
+  };
+  return buckets;
+}
 
 // --- Rendering helpers ------------------------------------------------
 
@@ -174,11 +205,56 @@ function renderReport(label, sessions, topN) {
   const abandoned = sessions.length - died - timedOut;
   const avgDurSec = avg(sessions.map(s => (s.summary.durationMs || 0) / 1000));
 
-  console.log(`  ended:    died ${died}  timedOut ${timedOut}  abandoned ${abandoned}`);
-  console.log(`  wave:     min ${pc.min}  p25 ${pc.p25}  p50 ${pc.p50}  p75 ${pc.p75}  p95 ${pc.p95}  max ${pc.max}`);
-  console.log(`  duration: mean ${avgDurSec.toFixed(1)}s  (${(avgDurSec / 60).toFixed(1)} min)`);
-  console.log(`  rerolls/run:  ${avg(sessions.map(s => s.summary.rerolls || 0)).toFixed(2)}`);
+  const durs = sessions.map(s => (s.summary.durationMs || 0) / 1000);
+  const durPC = percentiles(durs);
+  const splits = sessions.map(s => splitPicks(s));
+  const freeAvg = avg(splits.map(s => s.free));
+  const paidAvg = avg(splits.map(s => s.paid));
+  const freeMed = median(splits.map(s => s.free));
+  const paidMed = median(splits.map(s => s.paid));
+  const goldEarned = avg(sessions.map(s => s.summary.goldEarned || 0));
+  const goldSpent = avg(sessions.map(s => s.summary.goldSpent || 0));
+  const rerollsAvg = avg(sessions.map(s => s.summary.rerolls || 0));
+
+  console.log(`  ended:     died ${died}  timedOut ${timedOut}  abandoned ${abandoned}`);
+  console.log(`  wave:      min ${pc.min}  p25 ${pc.p25}  p50 ${pc.p50}  p75 ${pc.p75}  p95 ${pc.p95}  max ${pc.max}`);
+  console.log(`  duration:  p25 ${Math.round(durPC.p25)}s  p50 ${Math.round(durPC.p50)}s  p75 ${Math.round(durPC.p75)}s  p95 ${Math.round(durPC.p95)}s  max ${Math.round(durPC.max)}s  (mean ${(avgDurSec / 60).toFixed(1)} min)`);
+  console.log(`  cards/run: free median ${freeMed} (mean ${freeAvg.toFixed(1)})  paid median ${paidMed} (mean ${paidAvg.toFixed(1)})`);
+  console.log(`  economy:   gold earned avg ${goldEarned.toFixed(0)}  spent avg ${goldSpent.toFixed(0)}  rerolls/run ${rerollsAvg.toFixed(2)}`);
   console.log(`  flawless/run: ${avg(sessions.map(s => s.summary.flawlessWaves || 0)).toFixed(2)}`);
+
+  // --- Paid cohort split — answers "does the paid shop matter?"
+  const cohorts = paidCohorts(sessions);
+  const cohortRows = Object.entries(cohorts).filter(([, arr]) => arr.length > 0);
+  if (cohortRows.length) {
+    console.log(`\n  Paid-shop cohort (bucket by # of paid picks per run):`);
+    console.log(`    bucket     n   medWave  medDur   medFree  medPaid  medSpent`);
+    for (const [label, arr] of cohortRows) {
+      const w = median(arr.map(s => s.summary.waveReached));
+      const d = median(arr.map(s => (s.summary.durationMs || 0) / 1000));
+      const f = median(arr.map(s => splitPicks(s).free));
+      const p = median(arr.map(s => splitPicks(s).paid));
+      const sp = median(arr.map(s => s.summary.goldSpent || 0));
+      console.log(`    ${label.padEnd(9)} ${pad(arr.length, 3)}   ${pad(w, 6)}  ${pad(Math.round(d), 5)}s  ${pad(f, 7)}  ${pad(p, 7)}  ${pad(Math.round(sp), 8)}`);
+    }
+  }
+
+  // --- Outlier sessions: longest runs by duration (often signal an exploit)
+  const longest = [...sessions]
+    .sort((a, b) => (b.summary.durationMs || 0) - (a.summary.durationMs || 0))
+    .slice(0, 3);
+  const medDur = median(durs);
+  if (longest.length && longest[0].summary.durationMs / 1000 > medDur * 3) {
+    console.log(`\n  Outlier runs (≥3× median duration — possible grind/exploit):`);
+    console.log(`    id            wave  dur     free  paid  rr  spent`);
+    for (const s of longest) {
+      const sp = splitPicks(s);
+      const id = (s.id || '?').slice(0, 12);
+      const dur = Math.round((s.summary.durationMs || 0) / 1000);
+      if (dur <= medDur * 3) break;
+      console.log(`    ${id.padEnd(13)} ${pad(s.summary.waveReached, 4)}  ${pad(dur, 5)}s  ${pad(sp.free, 4)}  ${pad(sp.paid, 4)}  ${pad(s.summary.rerolls || 0, 2)}  ${pad(s.summary.goldSpent || 0, 5)}`);
+    }
+  }
 
   // --- Card pickrate
   const pickCounts = batch.pickCounts || {};

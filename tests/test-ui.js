@@ -97,7 +97,7 @@ function assert(condition, message) {
   assert(ui.cardCounts['damage'] === 1, 'pickCard(free): increments cardCounts');
 }
 
-// --- pickCard (paid mode) deducts gold and removes that card only ---
+// --- pickCard (paid mode) deducts gold and consumes the per-wave allowance ---
 {
   const ui = new UI();
   ui.draftMode = DraftMode.PAID;
@@ -111,8 +111,63 @@ function assert(condition, message) {
   const ok = ui.pickCard(0, player);
   assert(ok === true, 'pickCard(paid): succeeds with gold');
   assert(player.gold === 100 - cost, 'pickCard(paid): gold deducted');
-  assert(ui.draftOffer.length === 1, 'pickCard(paid): only picked card removed');
-  assert(ui.draftOffer[0].id === 'speed', 'pickCard(paid): remaining card is correct');
+  assert(ui.draftOffer.length === 0, 'pickCard(paid): offer cleared on pick (1-per-wave limit)');
+  assert(ui.paidPickLimitReached(), 'pickCard(paid): limit flag set after pick');
+}
+
+// --- pickCard (paid mode) refuses a second pick in the same wave ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.PAID;
+  const player = new Player(100, 100);
+  player.gold = 1000;
+  const damage = CARDS.find(c => c.id === 'damage');
+  const speed = CARDS.find(c => c.id === 'speed');
+
+  ui.draftOffer = [damage];
+  assert(ui.pickCard(0, player) === true, 'first paid pick succeeds');
+  const goldAfterFirst = player.gold;
+  const dmgAfterFirst = player.damage;
+
+  // Even if the caller restores an offer (e.g. via a rogue reroll code path),
+  // pickCard must refuse the second purchase until the wave rolls over.
+  ui.draftOffer = [speed];
+  const second = ui.pickCard(0, player);
+  assert(second === false, 'second paid pick blocked in same wave');
+  assert(player.gold === goldAfterFirst, 'second paid pick: no gold deducted');
+  assert(player.damage === dmgAfterFirst, 'second paid pick: no effect applied');
+}
+
+// --- onWaveStart refreshes the paid allowance ---
+{
+  const ui = new UI();
+  ui.draftMode = DraftMode.PAID;
+  const player = new Player(100, 100);
+  player.gold = 1000;
+  ui.draftOffer = [CARDS.find(c => c.id === 'damage')];
+  ui.pickCard(0, player);
+  assert(ui.paidPickLimitReached(), 'limit reached after 1 pick');
+  ui.onWaveStart();
+  assert(!ui.paidPickLimitReached(), 'onWaveStart: allowance refreshed');
+
+  // Second buy is now allowed in the fresh wave.
+  ui.beginPaidDraft(2);
+  assert(ui.draftOffer.length === 5, 'beginPaidDraft after wave start: fresh offer rolled');
+  const ok = ui.pickCard(0, player);
+  assert(ok === true, 'pickCard(paid) succeeds on new wave');
+}
+
+// --- beginPaidDraft returns an empty offer when allowance is already spent ---
+{
+  const ui = new UI();
+  const player = new Player(100, 100);
+  player.gold = 1000;
+  ui.beginPaidDraft(1);
+  ui.pickCard(0, player);
+  // Re-entering the shop in the same wave: no new offer should roll.
+  ui.beginPaidDraft(1);
+  assert(ui.draftOffer.length === 0, 'beginPaidDraft: empty offer when limit already reached');
+  assert(ui.paidPickLimitReached(), 'beginPaidDraft: limit still flagged');
 }
 
 // --- pickCard (paid mode) refuses when player lacks gold ---

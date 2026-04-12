@@ -236,6 +236,11 @@ export class UI {
     // Wave at which the paid offer was last rolled. Paid offer persists inside
     // a wave so players can't re-roll by exiting and re-entering the shop.
     this._paidOfferWave = -1;
+    // Paid picks already purchased in the current wave. Capped at 1 so the
+    // player can't grind the shop via buy → reroll → buy → reroll loops.
+    // Reset to 0 in onWaveStart(). See 2026-04 playtest data: a single
+    // session bought 24 paid cards in one run, reaching wave 12 in 2.4h.
+    this._paidPicksThisWave = 0;
 
     // Interaction rects set during render.
     this._cardButtons = [];
@@ -249,6 +254,7 @@ export class UI {
     this.draftMode = DraftMode.FREE;
     this.rerollCount = 0;
     this._paidOfferWave = -1;
+    this._paidPicksThisWave = 0;
     this._cardButtons = [];
     this._rerollButton = null;
     this._skipButton = null;
@@ -279,8 +285,15 @@ export class UI {
   // Begin a paid draft (in-world shop). Offer persists across visits during
   // the same wave; only refreshes when `currentWave` differs from the last
   // roll so exit/re-enter cannot be used as a free reroll.
+  // If the player has already bought a paid card this wave, the offer stays
+  // empty — paidPickLimitReached() lets the caller show a "sold out" state.
   beginPaidDraft(currentWave, rng = null) {
     this.draftMode = DraftMode.PAID;
+    if (this._paidPicksThisWave >= 1) {
+      this._paidOfferWave = currentWave;
+      this.draftOffer = [];
+      return;
+    }
     if (currentWave !== this._paidOfferWave || this.draftOffer.length === 0) {
       this._paidOfferWave = currentWave;
       this.rerollCount = 0;
@@ -288,10 +301,19 @@ export class UI {
     }
   }
 
+  // True once the player has used up their one paid pick for the current
+  // wave. Used by the shop renderer to show a "sold out" message and by
+  // game.js to route re-entry attempts sensibly.
+  paidPickLimitReached() {
+    return this._paidPicksThisWave >= 1;
+  }
+
   // Called by game when a new wave starts — invalidates paid offer so the
-  // next shop visit shows fresh cards.
+  // next shop visit shows fresh cards, and refreshes the per-wave paid pick
+  // allowance.
   onWaveStart() {
     this._paidOfferWave = -1;
+    this._paidPicksThisWave = 0;
   }
 
   // Shop cost scales with how many stacks the player already owns: each
@@ -318,7 +340,8 @@ export class UI {
   }
 
   // Pick a card from the current offer. In paid mode, deducts gold and bails
-  // out if the player can't afford it. Returns true if a card was applied.
+  // out if the player can't afford it — or if the per-wave paid allowance
+  // is already spent. Returns true if a card was applied.
   pickCard(index, player) {
     if (!player) return false;
     if (index < 0 || index >= this.draftOffer.length) return false;
@@ -326,6 +349,7 @@ export class UI {
     if (!card) return false;
 
     if (this.draftMode === DraftMode.PAID) {
+      if (this._paidPicksThisWave >= 1) return false;
       const cost = this.getCardCost(card);
       if (player.gold < cost) return false;
       player.gold -= cost;
@@ -336,9 +360,10 @@ export class UI {
     this.cardCounts[card.id] = owned + 1;
 
     if (this.draftMode === DraftMode.PAID) {
-      // Remove the card from the shop offer so it can't be bought twice in
-      // a row. Players can reroll for gold to see new options.
-      this.draftOffer.splice(index, 1);
+      // One paid pick per wave — clear the offer so subsequent re-entries
+      // see nothing to buy until onWaveStart() refreshes the allowance.
+      this._paidPicksThisWave++;
+      this.draftOffer = [];
     } else {
       // Free draft: one pick, then the offer is consumed.
       this.draftOffer = [];
