@@ -196,7 +196,7 @@ class MockWorld {
   assert(endDist < startDist, 'Guard moves closer to player during chase');
 }
 
-// --- Melee guard keeps a standoff distance from the player ---
+// --- Melee guard chases directly to the player position ---
 {
   const world = new MockWorld();
   const c = new Caravan(CaravanType.DONKEY, world);
@@ -206,16 +206,14 @@ class MockWorld {
 
   const playerPos = new Vec2(500, 300);
   const dt = 1 / 60;
-  // Run long enough to settle on the standoff ring.
+  // Run long enough to reach the player.
   for (let i = 0; i < 300; i++) {
     g.update(dt, playerPos);
   }
 
   const finalDist = g.pos.dist(playerPos);
-  const minStandoff = g.radius + CONST.PLAYER_RADIUS;
   const attackReach = CONST.GUARD_ATTACK_RANGE + CONST.PLAYER_RADIUS;
-  assert(finalDist > minStandoff, 'Guard stops outside the player body');
-  assert(finalDist < attackReach, 'Guard stays close enough to attack');
+  assert(finalDist < attackReach, 'Guard reaches attack range');
 }
 
 // --- Guard keeps chasing even when its caravan is destroyed ---

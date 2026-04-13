@@ -2,6 +2,7 @@
 
 import { Vec2, CONST, clamp } from './utils.js';
 import { randFn } from './rng.js';
+import { t } from './i18n.js';
 
 // Caravan types
 export const CaravanType = {
@@ -18,7 +19,7 @@ const CARAVAN_DEFS = {
     lootMax: 25,
     guardCount: 1,
     hp: 30,
-    label: 'Осёл',
+    get label() { return t('caravan.donkey'); },
   },
   [CaravanType.WAGON]: {
     speed: CONST.WAGON_SPEED,
@@ -27,7 +28,7 @@ const CARAVAN_DEFS = {
     lootMax: 60,
     guardCount: 2,
     hp: 60,
-    label: 'Телега',
+    get label() { return t('caravan.wagon'); },
   },
   [CaravanType.ROYAL]: {
     speed: CONST.ROYAL_SPEED,
@@ -36,7 +37,7 @@ const CARAVAN_DEFS = {
     lootMax: 150,
     guardCount: 3,
     hp: 100,
-    label: 'Карета',
+    get label() { return t('caravan.royal'); },
   },
 };
 
@@ -403,7 +404,10 @@ export class Guard {
           }
           break;
         case GuardState.RETURN:
-          if (distToPlayer < this.detectionRange * 0.8) {
+          // Only re-engage the player after getting back near the caravan.
+          // Without this, the guard oscillates between CHASE and RETURN
+          // every tick when the player stands at a middling distance.
+          if (distToCaravan < 60 && distToPlayer < this.detectionRange * 0.8) {
             this.state = GuardState.CHASE;
           } else if (distToCaravan < 30) {
             this.state = GuardState.PATROL;
@@ -436,39 +440,10 @@ export class Guard {
             targetPos = this.pos;
           }
         } else {
-          // Flanking: melee guards spread in an arc between the caravan
-          // and the player instead of all chasing the same point. Each
-          // guard gets a slot on a ring around the player so they approach
-          // from different angles and surround rather than single-file.
-          const standoff = this.radius + CONST.PLAYER_RADIUS + 4;
-
-          // Find this guard's slot among alive melee siblings.
-          const siblings = this.caravan.guards;
-          let slot = 0, meleeAlive = 0;
-          for (const g of siblings) {
-            if (!g.alive || g.type === GuardType.ARCHER) continue;
-            if (g === this) slot = meleeAlive;
-            meleeAlive++;
-          }
-
-          // Base angle: from player toward caravan — guards position on
-          // the caravan side to protect it.
-          const refDir = this.caravan.pos.sub(playerPos);
-          const baseAngle = refDir.lenSq() > 1
-            ? Math.atan2(refDir.y, refDir.x)
-            : 0;
-
-          // Distribute guards across a 144° arc centered on the base angle.
-          const arcSpread = Math.PI * 0.8;
-          const angleOffset = meleeAlive > 1
-            ? (slot / (meleeAlive - 1) - 0.5) * arcSpread
-            : 0;
-          const angle = baseAngle + angleOffset;
-
-          targetPos = new Vec2(
-            playerPos.x + Math.cos(angle) * standoff,
-            playerPos.y + Math.sin(angle) * standoff,
-          );
+          // Melee guards chase the player directly. resolveGuardCollisions
+          // handles physical separation so they don't stack on top of each
+          // other or clip into the player.
+          targetPos = playerPos;
         }
         break;
       }
@@ -625,11 +600,19 @@ export class Caravan {
     const count = this.def.guardCount + extraGuards;
     const rand = randFn(rng);
 
+    // Guards form a column along the road direction behind the caravan,
+    // like a real escort marching in file.
+    const roadDir = this.world.getRoadDirection(this.pathT);
+    // Perpendicular for side offset (slight stagger so they don't stack)
+    const perpX = -roadDir.y;
+    const perpY = roadDir.x;
+
     for (let i = 0; i < count; i++) {
-      const angle = (Math.PI * 2 * i) / count;
-      const offset = 30;
-      const gx = this.pos.x + Math.cos(angle) * offset;
-      const gy = this.pos.y + Math.sin(angle) * offset;
+      // Place guards behind the caravan along the road, spaced 25px apart
+      const behindDist = 30 + i * 25;
+      const side = (i % 2 === 0 ? -1 : 1) * 8; // slight left/right stagger
+      const gx = this.pos.x - roadDir.x * behindDist + perpX * side;
+      const gy = this.pos.y - roadDir.y * behindDist + perpY * side;
 
       // Choose guard type based on wave
       // Armored from wave 4+, archers from wave 7+ (wave 6 already ramps
@@ -645,6 +628,12 @@ export class Caravan {
       }
 
       const guard = new Guard(gx, gy, this, guardType, rng, wave);
+      // Override random patrol offset with a column formation offset
+      // so guards march in file behind the caravan.
+      guard.patrolOffset = new Vec2(
+        -roadDir.x * behindDist + perpX * side,
+        -roadDir.y * behindDist + perpY * side
+      );
       this.guards.push(guard);
     }
     return this.guards;
@@ -842,11 +831,10 @@ export function spawnWave(wave, world, rng = null) {
   }
 
   const startIdx = caravans.length;
-  // Dynamic spacing so all caravans start in the left portion of the road
-  // (pathT < ~0.35) regardless of count. Prevents later caravans from
-  // spawning at or past the player's position on high waves.
+  // Tight chain: caravans form a dense column like a real caravan train.
+  // ~0.12 pathT span keeps the whole group within ~240px on the road.
   const totalSlots = startIdx + caravanCount;
-  const spacing = totalSlots > 1 ? 0.30 / (totalSlots - 1) : 0;
+  const spacing = totalSlots > 1 ? 0.12 / (totalSlots - 1) : 0;
 
   for (let i = 0; i < caravanCount; i++) {
     // Choose type based on wave

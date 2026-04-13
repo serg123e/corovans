@@ -1,6 +1,7 @@
 // Game - main game class with fixed-timestep loop and state machine
 
 import { Vec2, CONST } from './utils.js';
+import { t } from './i18n.js';
 import { Camera } from './camera.js';
 import { World } from './world.js';
 import { Player } from './player.js';
@@ -879,7 +880,7 @@ export class Game {
       '#00ff88', '#000', 14, 'right', 'middle'
     );
     r.text(
-      '1-6: \u0441\u043A\u043E\u0440\u043E\u0441\u0442\u044C  Esc: \u043F\u0430\u0443\u0437\u0430  M: \u0437\u0432\u0443\u043A',
+      t('ai.hints'),
       r.width - 10, r.height - 40,
       '#00aa55', 11, 'right'
     );

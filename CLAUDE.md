@@ -21,6 +21,10 @@ js/
   combat.js         - Attack hit detection, damage calculation, Projectile class
   loot.js           - Gold coin drops and magnetic collection
   particles.js      - Particle system (dust, sparks, gold sparkle, death burst)
+  i18n.js           - Lightweight i18n: detects browser language, t(key, params) lookup with {placeholder} interpolation
+  lang/
+    en.js           - English language pack (default)
+    ru.js           - Russian language pack
   ui.js             - HUD, main menu, draft card shop (free + paid modes), pause, game over
   shop.js           - In-world Shop building the player approaches with E to buy cards
   audio.js          - Web Audio API sound generation (no audio files), mute toggle

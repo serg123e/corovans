@@ -95,9 +95,47 @@ export class Renderer {
     this.ctx.fillText(str, ox, oy);
   }
 
+  // Outlined text that shrinks to fit within maxWidth.
+  textOutlinedFit(str, x, y, maxWidth, color, outlineColor, size, align, baseline) {
+    let s = size;
+    while (s > 8 && this.measureText(str, s) > maxWidth) s--;
+    this.textOutlined(str, x, y, color, outlineColor, s, align, baseline);
+  }
+
   measureText(str, size = 16) {
     this.ctx.font = `bold ${size}px monospace`;
     return this.ctx.measureText(str).width;
+  }
+
+  // Draw word-wrapped text within maxWidth. Returns the total height used.
+  textWrapped(str, x, y, maxWidth, color = '#fff', size = 16, align = 'left', lineHeight = 1.3) {
+    this.ctx.font = `bold ${size}px monospace`;
+    this.ctx.fillStyle = color;
+    this.ctx.textAlign = align;
+    this.ctx.textBaseline = 'top';
+
+    const words = str.split(' ');
+    const lines = [];
+    let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (this.ctx.measureText(test).width > maxWidth && cur) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        cur = test;
+      }
+    }
+    if (cur) lines.push(cur);
+
+    const lh = Math.round(size * lineHeight);
+    const ox = Math.round(x);
+    let oy = Math.round(y);
+    for (const line of lines) {
+      this.ctx.fillText(line, ox, oy);
+      oy += lh;
+    }
+    return lines.length * lh;
   }
 
   // Draw a simple pixel-art style sprite from a pixel map

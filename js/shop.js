@@ -2,6 +2,7 @@
 // Rendering is procedural (no sprite assets) to match the rest of the game.
 
 import { Vec2 } from './utils.js';
+import { t } from './i18n.js';
 
 const SHOP_INTERACT_RANGE = 56;
 
@@ -63,7 +64,7 @@ export class Shop {
     const pulse = 0.65 + 0.35 * Math.sin(t * 5);
     const py = this.pos.y - 52;
     renderer.setAlpha(pulse);
-    renderer.textOutlined('[E] ТОРГОВАТЬ', this.pos.x, py, '#ffd700', '#000', 13, 'center', 'middle');
+    renderer.textOutlined(t('shop.interact'), this.pos.x, py, '#ffd700', '#000', 13, 'center', 'middle');
     renderer.resetAlpha();
   }
 }

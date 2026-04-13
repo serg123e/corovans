@@ -5,6 +5,7 @@ import { CONST, pointInRect } from './utils.js';
 import { getBestScore, getBestWave } from './storage.js';
 import { countSessions } from './session-logger.js';
 import { randFn } from './rng.js';
+import { t } from './i18n.js';
 
 // Card rarities drive pool weighting and card border colors.
 const Rarity = {
@@ -51,8 +52,8 @@ export const CARDS = [
   // --- Stat cards (common, multi-take) ---
   {
     id: 'damage',
-    label: 'Точный удар',
-    desc: '+5 к урону',
+    get label() { return t('card.damage.label'); },
+    get desc() { return t('card.damage.desc'); },
     icon: '⚔',
     rarity: Rarity.COMMON,
     stackable: true,
@@ -60,8 +61,8 @@ export const CARDS = [
   },
   {
     id: 'maxHp',
-    label: 'Крепкий череп',
-    desc: '+25 макс. HP и исцеление',
+    get label() { return t('card.maxHp.label'); },
+    get desc() { return t('card.maxHp.desc'); },
     icon: '❤',
     rarity: Rarity.COMMON,
     stackable: true,
@@ -73,8 +74,8 @@ export const CARDS = [
   },
   {
     id: 'speed',
-    label: 'Лёгкая походка',
-    desc: '+15 к скорости, −6% к перезарядке атаки',
+    get label() { return t('card.speed.label'); },
+    get desc() { return t('card.speed.desc'); },
     icon: '👢',
     rarity: Rarity.COMMON,
     stackable: true,
@@ -85,8 +86,8 @@ export const CARDS = [
   },
   {
     id: 'attackRange',
-    label: 'Длинная рука',
-    desc: '+2 к радиусу атаки',
+    get label() { return t('card.attackRange.label'); },
+    get desc() { return t('card.attackRange.desc'); },
     icon: '🗡',
     rarity: Rarity.COMMON,
     stackable: true,
@@ -94,8 +95,8 @@ export const CARDS = [
   },
   {
     id: 'cooldown',
-    label: 'Быстрый замах',
-    desc: '−12% к перезарядке атаки',
+    get label() { return t('card.cooldown.label'); },
+    get desc() { return t('card.cooldown.desc'); },
     icon: '⏱',
     rarity: Rarity.COMMON,
     stackable: true,
@@ -106,8 +107,8 @@ export const CARDS = [
   // --- Mechanical cards (uncommon) ---
   {
     id: 'lifesteal',
-    label: 'Вампиризм',
-    desc: '+7% HP от нанесённого урона',
+    get label() { return t('card.lifesteal.label'); },
+    get desc() { return t('card.lifesteal.desc'); },
     icon: '🩸',
     rarity: Rarity.UNCOMMON,
     stackable: true,
@@ -115,8 +116,8 @@ export const CARDS = [
   },
   {
     id: 'magnet',
-    label: 'Жадные руки',
-    desc: '+50% к радиусу магнита',
+    get label() { return t('card.magnet.label'); },
+    get desc() { return t('card.magnet.desc'); },
     icon: '🧲',
     rarity: Rarity.UNCOMMON,
     stackable: true,
@@ -124,8 +125,8 @@ export const CARDS = [
   },
   {
     id: 'thorns',
-    label: 'Шипы',
-    desc: 'Ближники получают 25% урона в ответ',
+    get label() { return t('card.thorns.label'); },
+    get desc() { return t('card.thorns.desc'); },
     icon: '🌵',
     rarity: Rarity.UNCOMMON,
     stackable: true,
@@ -133,8 +134,8 @@ export const CARDS = [
   },
   {
     id: 'regen',
-    label: 'Второе дыхание',
-    desc: '+1 HP/сек регенерации',
+    get label() { return t('card.regen.label'); },
+    get desc() { return t('card.regen.desc'); },
     icon: '💚',
     rarity: Rarity.UNCOMMON,
     stackable: true,
@@ -142,8 +143,8 @@ export const CARDS = [
   },
   {
     id: 'dashCooldown',
-    label: 'Быстрые ноги',
-    desc: '−25% к кулдауну рывка, +0.05с к окну неуязвимости',
+    get label() { return t('card.dashCooldown.label'); },
+    get desc() { return t('card.dashCooldown.desc'); },
     icon: '⚡',
     rarity: Rarity.UNCOMMON,
     stackable: true,
@@ -155,8 +156,8 @@ export const CARDS = [
   // --- Rare cards ---
   {
     id: 'glassCannon',
-    label: 'Берсерк',
-    desc: '+8 урона, −15 макс. HP',
+    get label() { return t('card.glassCannon.label'); },
+    get desc() { return t('card.glassCannon.desc'); },
     icon: '💀',
     rarity: Rarity.RARE,
     stackable: true,
@@ -168,8 +169,8 @@ export const CARDS = [
   },
   {
     id: 'wideArc',
-    label: 'Круговой удар',
-    desc: 'Атака бьёт во все стороны',
+    get label() { return t('card.wideArc.label'); },
+    get desc() { return t('card.wideArc.desc'); },
     icon: '🌀',
     rarity: Rarity.RARE,
     stackable: false,
@@ -393,7 +394,7 @@ export class UI {
   renderMenu(r) {
     const cx = r.width / 2;
     const cy = r.height / 2;
-    const t = performance.now() / 1000;
+    const now = performance.now() / 1000;
 
     r.setAlpha(0.75);
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
@@ -405,50 +406,51 @@ export class UI {
     r.line(cx + 80, swordY - 30, cx - 80, swordY + 30, '#ffd700', 3);
     r.resetAlpha();
 
-    const pulse = 0.85 + 0.15 * Math.sin(t * 2);
+    const title = t('menu.title');
+    const pulse = 0.85 + 0.15 * Math.sin(now * 2);
     r.setAlpha(pulse * 0.3);
-    r.textOutlined('КОРОВАНЫ', cx, cy - 99, '#ffaa00', '#000', 68, 'center', 'middle');
+    r.textOutlined(title, cx, cy - 99, '#ffaa00', '#000', 68, 'center', 'middle');
     r.resetAlpha();
-    r.textOutlined('КОРОВАНЫ', cx, cy - 100, '#ffd700', '#000', 64, 'center', 'middle');
+    r.textOutlined(title, cx, cy - 100, '#ffd700', '#000', 64, 'center', 'middle');
 
     r.setAlpha(0.5);
     r.line(cx - 100, cy - 55, cx + 100, cy - 55, '#ffd700', 1);
     r.resetAlpha();
 
-    r.textOutlined('грабь корованы!', cx, cy - 30, '#e8c872', '#000', 24, 'center', 'middle');
+    r.textOutlined(t('menu.subtitle'), cx, cy - 30, '#e8c872', '#000', 24, 'center', 'middle');
 
     // Best record
     const bestScore = getBestScore();
     const bestWave = getBestWave();
     if (bestScore > 0 || bestWave > 0) {
       r.textOutlined(
-        `Рекорд: ${bestScore}  •  Волна: ${bestWave}`,
+        t('menu.record', { score: bestScore, wave: bestWave }),
         cx, cy + 10, '#ffc85a', '#000', 16, 'center', 'middle'
       );
     }
 
-    r.textOutlined('WASD / стрелки - движение', cx, cy + 45, '#aaa', '#000', 16, 'center', 'middle');
-    r.textOutlined('Пробел / ПКМ - атака   •   ЛКМ - движение   •   Shift - рывок   •   E - магазин', cx, cy + 68, '#aaa', '#000', 12, 'center', 'middle');
-    r.textOutlined('Esc - пауза   •   M - звук   •   L - экспорт логов', cx, cy + 89, '#888', '#000', 13, 'center', 'middle');
+    r.textOutlined(t('menu.controls1'), cx, cy + 45, '#aaa', '#000', 16, 'center', 'middle');
+    r.textOutlined(t('menu.controls2'), cx, cy + 68, '#aaa', '#000', 12, 'center', 'middle');
+    r.textOutlined(t('menu.controls3'), cx, cy + 89, '#888', '#000', 13, 'center', 'middle');
 
     // Session log indicator — helps remember that logs are stored locally.
     const n = countSessions();
     if (n > 0) {
-      r.text(`Логов сессий: ${n}  (L — скачать, Shift+L — очистить)`, 10, r.height - 20, '#666', 12, 'left');
+      r.text(t('menu.sessions', { n }), 10, r.height - 20, '#666', 12, 'left');
     }
 
     r.setAlpha(0.4);
     for (let i = 0; i < 5; i++) {
       const coinX = cx - 160 + i * 80;
-      const coinY = cy + 130 + Math.sin(t * 1.5 + i * 1.3) * 8;
+      const coinY = cy + 130 + Math.sin(now * 1.5 + i * 1.3) * 8;
       r.circle(coinX, coinY, 4, '#ffd700');
       r.circle(coinX - 1, coinY - 1, 2, '#ffee66');
     }
     r.resetAlpha();
 
-    const promptAlpha = 0.5 + 0.5 * Math.sin(t * 3);
+    const promptAlpha = 0.5 + 0.5 * Math.sin(now * 3);
     r.setAlpha(promptAlpha);
-    r.textOutlined('[ Enter / клик — начать ]', cx, cy + 170, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(t('menu.start'), cx, cy + 170, '#fff', '#000', 20, 'center', 'middle');
     r.resetAlpha();
 
     r.setAlpha(0.3);
@@ -461,9 +463,9 @@ export class UI {
     r.rect(0, 0, r.width, CONST.HUD_HEIGHT, 'rgba(0,0,0,0.5)');
     const isBossWave = game.wave > 0 && game.wave % 5 === 0;
     const waveColor = isBossWave ? '#ff4444' : '#fff';
-    const waveText = isBossWave ? `Волна: ${game.wave} [БОСС]` : `Волна: ${game.wave}`;
-    r.text(waveText, 10, 10, waveColor, 16);
-    r.text(`Счёт: ${game.score}`, 180, 10, CONST.COLOR_GOLD, 16);
+    const waveKey = isBossWave ? 'hud.waveBoss' : 'hud.wave';
+    r.text(t(waveKey, { wave: game.wave }), 10, 10, waveColor, 16);
+    r.text(t('hud.score', { score: game.score }), 180, 10, CONST.COLOR_GOLD, 16);
     if (player) {
       r.healthBar(310, 12, 100, 14, player.hp / player.maxHp, CONST.COLOR_HP_BAR, CONST.COLOR_HP_BG);
       r.text(`${player.hp}/${player.maxHp}`, 420, 10, '#fff', 14);
@@ -483,7 +485,7 @@ export class UI {
     }
     const aliveCaravans = game.caravans.filter(c => c.alive).length;
     const aliveGuards = game.guards.filter(g => g.alive).length;
-    r.text(`Корованы: ${aliveCaravans}  Охрана: ${aliveGuards}`, 630, 10, '#ddd', 14);
+    r.text(t('hud.caravansGuards', { caravans: aliveCaravans, guards: aliveGuards }), 630, 10, '#ddd', 14);
 
     // Mute indicator at the right edge.
     if (game.audio && game.audio.muted) {
@@ -497,10 +499,10 @@ export class UI {
 
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
 
-    const title = paid ? 'ТОРГОВЕЦ' : 'ВЫБЕРИ КАРТУ';
-    r.textOutlined(title, cx, 50, '#ffd700', '#000', 38, 'center', 'middle');
+    const shopTitle = paid ? t('shop.titlePaid') : t('shop.titleFree');
+    r.textOutlined(shopTitle, cx, 50, '#ffd700', '#000', 38, 'center', 'middle');
     r.textOutlined(
-      `Золото: ${player ? player.gold : 0}`,
+      t('shop.gold', { gold: player ? player.gold : 0 }),
       cx, 90, CONST.COLOR_GOLD, '#000', 20, 'center', 'middle'
     );
 
@@ -516,8 +518,8 @@ export class UI {
     // Paid shop: if the per-wave allowance is spent, show a "sold out"
     // message instead of an empty card area.
     if (paid && this.paidPickLimitReached()) {
-      r.textOutlined('РАСПРОДАНО', cx, cardY + cardH / 2 - 10, '#888', '#000', 32, 'center', 'middle');
-      r.text('Приходи на следующей волне', cx, cardY + cardH / 2 + 26, '#666', 14, 'center');
+      r.textOutlined(t('shop.soldOut'), cx, cardY + cardH / 2 - 10, '#888', '#000', 32, 'center', 'middle');
+      r.text(t('shop.soldOutHint'), cx, cardY + cardH / 2 + 26, '#666', 14, 'center');
       // No reroll button — nothing to reroll.
       this._rerollButton = null;
       const skW = 180;
@@ -527,14 +529,9 @@ export class UI {
       this._skipButton = { x: skX, y: skY, w: skW, h: skH };
       r.rect(skX, skY, skW, skH, '#2a3a5a');
       r.strokeRect(skX, skY, skW, skH, '#4a6a8a', 2);
-      r.textOutlined('Выйти из шопа', skX + skW / 2, skY + skH / 2, '#fff', '#000', 16, 'center', 'middle');
+      r.textOutlined(t('shop.exit'), skX + skW / 2, skY + skH / 2, '#fff', '#000', 16, 'center', 'middle');
       if (player) {
-        const sy = skY + skH + 30;
-        r.textOutlined('Характеристики:', cx, sy, '#aaa', '#000', 15, 'center', 'middle');
-        r.text(`Урон: ${player.damage}`, cx - 200, sy + 22, '#ccc', 13);
-        r.text(`HP: ${player.hp}/${player.maxHp}`, cx - 70, sy + 22, '#ccc', 13);
-        r.text(`Скорость: ${player.speed}`, cx + 60, sy + 22, '#ccc', 13);
-        r.text(`Радиус: ${player.attackRange}`, cx + 200, sy + 22, '#ccc', 13);
+        this._renderStats(r, player, cx, skY + skH + 30);
       }
       return;
     }
@@ -558,15 +555,16 @@ export class UI {
       const iconColor = canAfford ? '#fff' : '#555';
       r.textOutlined(card.icon, x + cardW / 2, cardY + 64, iconColor, '#000', 44, 'center', 'middle');
 
-      // Title
-      r.textOutlined(
+      // Title (auto-shrink to fit card width)
+      r.textOutlinedFit(
         card.label,
-        x + cardW / 2, cardY + 128,
+        x + cardW / 2, cardY + 128, cardW - 12,
         canAfford ? '#fff' : '#666', '#000', 16, 'center', 'middle'
       );
 
-      // Description
-      r.text(card.desc, x + cardW / 2, cardY + 155, canAfford ? '#bbb' : '#555', 11, 'center');
+      // Description (word-wrapped to fit card width)
+      const descPad = 8;
+      r.textWrapped(card.desc, x + cardW / 2, cardY + 148, cardW - descPad * 2, canAfford ? '#bbb' : '#555', 11, 'center');
 
       // Cost + owned count
       const costColor = canAfford ? CONST.COLOR_GOLD : '#664400';
@@ -593,7 +591,7 @@ export class UI {
     r.rect(rrX, rrY, rrW, rrH, canReroll ? '#3a2a5a' : '#2a2a3a');
     r.strokeRect(rrX, rrY, rrW, rrH, canReroll ? '#6a4a8a' : '#4a4a5a', 2);
     r.textOutlined(
-      `⟳ Реролл (${rerollCost})`,
+      t('shop.reroll', { cost: rerollCost }),
       rrX + rrW / 2, rrY + rrH / 2,
       canReroll ? '#fff' : '#666', '#000', 16, 'center', 'middle'
     );
@@ -606,29 +604,32 @@ export class UI {
     this._skipButton = { x: skX, y: skY, w: skW, h: skH };
     r.rect(skX, skY, skW, skH, '#2a3a5a');
     r.strokeRect(skX, skY, skW, skH, '#4a6a8a', 2);
-    const skLabel = paid ? 'Выйти из шопа' : 'Пропустить >';
+    const skLabel = paid ? t('shop.exit') : t('shop.skip');
     r.textOutlined(skLabel, skX + skW / 2, skY + skH / 2, '#fff', '#000', 16, 'center', 'middle');
 
     // Stats summary
     if (player) {
-      const sy = rrY + rrH + 30;
-      r.textOutlined('Характеристики:', cx, sy, '#aaa', '#000', 15, 'center', 'middle');
-      r.text(`Урон: ${player.damage}`, cx - 200, sy + 22, '#ccc', 13);
-      r.text(`HP: ${player.hp}/${player.maxHp}`, cx - 70, sy + 22, '#ccc', 13);
-      r.text(`Скорость: ${player.speed}`, cx + 60, sy + 22, '#ccc', 13);
-      r.text(`Радиус: ${player.attackRange}`, cx + 200, sy + 22, '#ccc', 13);
-      if (player.lifestealPct > 0) {
-        r.text(`Вамп: ${Math.round(player.lifestealPct * 100)}%`, cx - 200, sy + 42, '#d46a7a', 13);
-      }
-      if (player.thornsPct > 0) {
-        r.text(`Шипы: ${Math.round(player.thornsPct * 100)}%`, cx - 70, sy + 42, '#6bbf4a', 13);
-      }
-      if (player.magnetRangeMul > 1) {
-        r.text(`Магнит: x${player.magnetRangeMul.toFixed(1)}`, cx + 60, sy + 42, '#d4a020', 13);
-      }
-      if (player.fullArcAttack) {
-        r.text('Круговая атака', cx + 200, sy + 42, '#e2b44a', 13);
-      }
+      this._renderStats(r, player, cx, rrY + rrH + 30);
+    }
+  }
+
+  _renderStats(r, player, cx, sy) {
+    r.textOutlined(t('shop.stats'), cx, sy, '#aaa', '#000', 15, 'center', 'middle');
+    r.text(t('shop.statDamage', { value: player.damage }), cx - 200, sy + 22, '#ccc', 13);
+    r.text(t('shop.statHp', { hp: player.hp, maxHp: player.maxHp }), cx - 70, sy + 22, '#ccc', 13);
+    r.text(t('shop.statSpeed', { value: player.speed }), cx + 60, sy + 22, '#ccc', 13);
+    r.text(t('shop.statRange', { value: player.attackRange }), cx + 200, sy + 22, '#ccc', 13);
+    if (player.lifestealPct > 0) {
+      r.text(t('shop.statVamp', { value: Math.round(player.lifestealPct * 100) }), cx - 200, sy + 42, '#d46a7a', 13);
+    }
+    if (player.thornsPct > 0) {
+      r.text(t('shop.statThorns', { value: Math.round(player.thornsPct * 100) }), cx - 70, sy + 42, '#6bbf4a', 13);
+    }
+    if (player.magnetRangeMul > 1) {
+      r.text(t('shop.statMagnet', { value: player.magnetRangeMul.toFixed(1) }), cx + 60, sy + 42, '#d4a020', 13);
+    }
+    if (player.fullArcAttack) {
+      r.text(t('shop.statWideArc'), cx + 200, sy + 42, '#e2b44a', 13);
     }
   }
 
@@ -638,9 +639,9 @@ export class UI {
     r.resetAlpha();
     const cx = r.width / 2;
     const cy = r.height / 2;
-    r.textOutlined('ПАУЗА', cx, cy - 20, '#ffd700', '#000', 56, 'center', 'middle');
-    r.textOutlined('Esc / P - продолжить', cx, cy + 30, '#ccc', '#000', 18, 'center', 'middle');
-    r.textOutlined('M - звук', cx, cy + 56, '#888', '#000', 14, 'center', 'middle');
+    r.textOutlined(t('pause.title'), cx, cy - 20, '#ffd700', '#000', 56, 'center', 'middle');
+    r.textOutlined(t('pause.resume'), cx, cy + 30, '#ccc', '#000', 18, 'center', 'middle');
+    r.textOutlined(t('pause.mute'), cx, cy + 56, '#888', '#000', 14, 'center', 'middle');
   }
 
   renderGameOver(r, game) {
@@ -648,25 +649,25 @@ export class UI {
     const cy = r.height / 2;
 
     r.rect(0, 0, r.width, r.height, '#1a1a2e');
-    r.textOutlined('КОНЕЦ ИГРЫ', cx, cy - 110, '#e74c3c', '#000', 48, 'center', 'middle');
-    r.textOutlined(`Погиб на волне: ${game.wave}`, cx, cy - 40, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Корованов ограблено: ${game.caravansRobbed}`, cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
-    r.textOutlined(`Счёт: ${game.score}`, cx, cy + 25, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
+    r.textOutlined(t('gameover.title'), cx, cy - 110, '#e74c3c', '#000', 48, 'center', 'middle');
+    r.textOutlined(t('gameover.diedOnWave', { wave: game.wave }), cx, cy - 40, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(t('gameover.caravansRobbed', { count: game.caravansRobbed }), cx, cy - 10, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined(t('gameover.score', { score: game.score }), cx, cy + 25, CONST.COLOR_GOLD, '#000', 24, 'center', 'middle');
 
     const bestScore = getBestScore();
     const bestWave = getBestWave();
     if (game.newRecord) {
-      r.textOutlined('НОВЫЙ РЕКОРД!', cx, cy + 65, '#00ff88', '#000', 22, 'center', 'middle');
+      r.textOutlined(t('gameover.newRecord'), cx, cy + 65, '#00ff88', '#000', 22, 'center', 'middle');
     } else if (bestScore > 0) {
       r.textOutlined(
-        `Рекорд: ${bestScore} (волна ${bestWave})`,
+        t('gameover.record', { score: bestScore, wave: bestWave }),
         cx, cy + 65, '#aaa', '#000', 16, 'center', 'middle'
       );
     }
 
     const blink = Math.sin(performance.now() / 300) > 0;
     if (blink) {
-      r.textOutlined('[ Enter / клик — продолжить ]', cx, cy + 130, '#aaa', '#000', 16, 'center', 'middle');
+      r.textOutlined(t('gameover.continue'), cx, cy + 130, '#aaa', '#000', 16, 'center', 'middle');
     }
   }
 }
