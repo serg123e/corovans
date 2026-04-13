@@ -35,7 +35,7 @@ export class AIController {
 
     switch (game.state) {
       case State.MENU:
-        if (age > MENU_DELAY) this.input.press('Space');
+        if (age > MENU_DELAY) this.input.press('Enter');
         break;
       case State.PLAYING:
         this._tickPlaying(game);
@@ -44,7 +44,7 @@ export class AIController {
         if (age > SHOP_DELAY) this._tickShop(game);
         break;
       case State.GAME_OVER:
-        if (age > GAME_OVER_DELAY) this.input.press('Space');
+        if (age > GAME_OVER_DELAY) this.input.press('Enter');
         break;
       // PAUSED: do nothing — let the human spectator unpause with Esc.
     }
