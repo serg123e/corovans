@@ -392,9 +392,8 @@ export class Game {
 
       // Handle player attack
       if (this.input.wantsAttack()) {
-        // Click / tap reaims the player toward the cursor before attacking.
-        // Space auto-aims at the nearest alive enemy (guard or caravan).
-        if (this.input.mouse.clicked) {
+        // Right mouse / tap = aim toward cursor. Space = auto-aim at nearest enemy.
+        if (this.input.mouse.rightDown || this.input.mouse.clicked) {
           const world = this.camera.screenToWorld(this.input.mouse.x, this.input.mouse.y);
           const dx = world.x - this.player.pos.x;
           const dy = world.y - this.player.pos.y;

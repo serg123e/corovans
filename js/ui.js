@@ -428,7 +428,7 @@ export class UI {
     }
 
     r.textOutlined('WASD / стрелки - движение', cx, cy + 45, '#aaa', '#000', 16, 'center', 'middle');
-    r.textOutlined('Пробел / клик - атака   •   Shift - рывок   •   E - магазин', cx, cy + 68, '#aaa', '#000', 14, 'center', 'middle');
+    r.textOutlined('Пробел / ПКМ - атака   •   ЛКМ - движение   •   Shift - рывок   •   E - магазин', cx, cy + 68, '#aaa', '#000', 12, 'center', 'middle');
     r.textOutlined('Esc - пауза   •   M - звук   •   L - экспорт логов', cx, cy + 89, '#888', '#000', 13, 'center', 'middle');
 
     // Session log indicator — helps remember that logs are stored locally.

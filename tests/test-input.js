@@ -146,7 +146,7 @@ function assertApprox(a, b, msg, eps = 0.001) {
   assertApprox(move.y, 0, 'Held LMB keeps y at zero when aligned');
 }
 
-// --- Holding RMB walks toward cursor but does NOT attack ---
+// --- Holding RMB triggers aimed attack, does NOT move ---
 {
   const canvas = makeCanvas();
   const input = new Input(canvas);
@@ -156,13 +156,11 @@ function assertApprox(a, b, msg, eps = 0.001) {
 
   canvas.listeners.mousedown({ button: 2, preventDefault() {} });
   const move = input.getMovement();
-  assertApprox(move.x, 0, 'Held RMB moves along y only');
-  assertApprox(move.y, 1, 'Held RMB moves player down toward cursor');
-  assert(!input.wantsAttack(), 'Right mouse button does not trigger attack');
+  assert(move.x === 0 && move.y === 0, 'Held RMB does not move');
+  assert(input.wantsAttack(), 'Right mouse button triggers attack');
 
   canvas.listeners.mouseup({ button: 2, preventDefault() {} });
-  const stopped = input.getMovement();
-  assert(stopped.x === 0 && stopped.y === 0, 'Releasing RMB stops movement');
+  assert(!input.wantsAttack(), 'Releasing RMB stops attack');
 }
 
 // --- Mouse hold within dead zone = no movement ---

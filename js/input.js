@@ -200,9 +200,9 @@ export class Input {
         return { x: dx / d, y: dy / d };
       }
     }
-    // Held mouse button (left or right) = walk toward cursor, same semantics
-    // as holding a touch. Clicks and attacks are handled separately.
-    if (this.mouse.down || this.mouse.rightDown) {
+    // Held left mouse button = walk toward cursor, same semantics as
+    // holding a touch. Right mouse is reserved for aimed attacks.
+    if (this.mouse.down) {
       const dx = this.mouse.x - this._playerScreenX;
       const dy = this.mouse.y - this._playerScreenY;
       const d = Math.sqrt(dx * dx + dy * dy);
@@ -214,9 +214,10 @@ export class Input {
   }
 
   wantsAttack() {
-    // Space held = auto-repeat attacks. Mouse click = single attack
-    // (mouse.down is used for movement, so it can't double as attack hold).
-    return this.isDown('Space') || this.mouse.clicked;
+    // Space held = auto-repeat attacks (auto-aims at nearest enemy).
+    // Right mouse held = aimed attacks toward cursor.
+    // Touch tap = single attack (routed through mouse.clicked).
+    return this.isDown('Space') || this.mouse.rightDown || this.mouse.clicked;
   }
 
   destroy() {
