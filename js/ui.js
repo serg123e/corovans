@@ -448,7 +448,7 @@ export class UI {
 
     const promptAlpha = 0.5 + 0.5 * Math.sin(t * 3);
     r.setAlpha(promptAlpha);
-    r.textOutlined('[ Нажми чтобы начать ]', cx, cy + 170, '#fff', '#000', 20, 'center', 'middle');
+    r.textOutlined('[ Enter / клик — начать ]', cx, cy + 170, '#fff', '#000', 20, 'center', 'middle');
     r.resetAlpha();
 
     r.setAlpha(0.3);
@@ -666,7 +666,7 @@ export class UI {
 
     const blink = Math.sin(performance.now() / 300) > 0;
     if (blink) {
-      r.textOutlined('[ Нажми чтобы продолжить ]', cx, cy + 130, '#aaa', '#000', 16, 'center', 'middle');
+      r.textOutlined('[ Enter / клик — продолжить ]', cx, cy + 130, '#aaa', '#000', 16, 'center', 'middle');
     }
   }
 }

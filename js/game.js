@@ -328,7 +328,7 @@ export class Game {
       return;
     }
 
-    if (this.input.wasPressed('Space') || this.input.wasPressed('Enter') || this.input.mouse.clicked) {
+    if (this.input.wasPressed('Enter') || this.input.mouse.clicked) {
       this.startGame();
       this.input.endFrame(); // consume input so it doesn't trigger attack on first frame
     }
@@ -858,7 +858,9 @@ export class Game {
   // --- Game Over ---
 
   _updateGameOver(dt) {
-    if (this.input.wasPressed('Space') || this.input.wasPressed('Enter') || this.input.mouse.clicked) {
+    // Space is excluded — player is likely still holding it from combat
+    // and would skip the screen without reading it.
+    if (this.input.wasPressed('Enter') || this.input.mouse.clicked) {
       this.state = State.MENU;
       this.input.endFrame(); // consume input so it doesn't immediately start a new game
     }

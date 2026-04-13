@@ -214,7 +214,9 @@ export class Input {
   }
 
   wantsAttack() {
-    return this.wasPressed('Space') || this.mouse.clicked;
+    // Space held = auto-repeat attacks. Mouse click = single attack
+    // (mouse.down is used for movement, so it can't double as attack hold).
+    return this.isDown('Space') || this.mouse.clicked;
   }
 
   destroy() {
