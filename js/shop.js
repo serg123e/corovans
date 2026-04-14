@@ -60,8 +60,8 @@ export class Shop {
   // Draw a floating "press E" prompt above the shop when the player is near.
   // Rendered in world-space so it follows the shop with the camera.
   renderInteractPrompt(renderer) {
-    const t = performance.now() / 1000;
-    const pulse = 0.65 + 0.35 * Math.sin(t * 5);
+    const now = performance.now() / 1000;
+    const pulse = 0.65 + 0.35 * Math.sin(now * 5);
     const py = this.pos.y - 52;
     renderer.setAlpha(pulse);
     renderer.textOutlined(t('shop.interact'), this.pos.x, py, '#ffd700', '#000', 13, 'center', 'middle');
