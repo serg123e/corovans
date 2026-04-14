@@ -440,10 +440,15 @@ export class Guard {
             targetPos = this.pos;
           }
         } else {
-          // Melee guards chase the player directly. resolveGuardCollisions
-          // handles physical separation so they don't stack on top of each
-          // other or clip into the player.
-          targetPos = playerPos;
+          // Melee guards approach and stop at the player's surface — still
+          // inside attack range (guard.attackRange + PLAYER_RADIUS = ~32)
+          // but not clipping into the player body.
+          const standoff = CONST.PLAYER_RADIUS;
+          const fromPlayer = this.pos.sub(playerPos);
+          const d = fromPlayer.len();
+          targetPos = d > standoff
+            ? playerPos.add(fromPlayer.mul(standoff / d))
+            : this.pos;
         }
         break;
       }
